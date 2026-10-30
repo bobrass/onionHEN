@@ -57,6 +57,7 @@ struct AppInstApi {
 AppInstApi g_appinst;
 std::vector<std::string> g_scanned_system_paths;
 std::vector<PkgInstallerEntry> g_scanned_entries;
+std::uint64_t g_scanned_generation = 0;
 std::string g_path_draft;
 
 extern "C" int sceKernelLoadStartModule(const char *name, std::size_t argc,
@@ -156,6 +157,7 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
                                       std::size_t path_count) {
   PkgInstallerScan result{};
   clear_pkg_search_results();
+  result.generation = g_scanned_generation;
   if (!system_paths || path_count > onion::kMaxCustomPkgSearchPaths)
     return result;
 
@@ -224,12 +226,17 @@ const std::string &pkg_search_path_draft() { return g_path_draft; }
 void clear_pkg_search_results() {
   g_scanned_system_paths.clear();
   g_scanned_entries.clear();
+  ++g_scanned_generation;
+  if (g_scanned_generation == 0)
+    ++g_scanned_generation;
 }
 
-PkgInstallerResult install_scanned_pkg(std::size_t index,
+PkgInstallerResult install_scanned_pkg(std::uint64_t generation,
+                                       std::size_t index,
                                        const std::string *system_paths,
                                        std::size_t path_count) {
-  if (!system_paths || path_count != g_scanned_system_paths.size() ||
+  if (generation != g_scanned_generation || !system_paths ||
+      path_count != g_scanned_system_paths.size() ||
       !std::equal(system_paths, system_paths + path_count,
                   g_scanned_system_paths.begin()) ||
       index >= g_scanned_entries.size())

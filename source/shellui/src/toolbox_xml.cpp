@@ -1106,8 +1106,10 @@ void generate_custom_pkg_installer_xml(std::string &xml_buffer) {
                              toolbox_i18n::tr("pkg.custom.empty"));
                for (std::size_t i = 0; i < scan.entries.size(); ++i) {
                  const PkgInstallerEntry &entry = scan.entries[i];
-                 group.button("id_pkg_install_" + std::to_string(i), entry.name,
-                              entry.search_path,
+                 group.button("id_pkg_install_" +
+                                  std::to_string(scan.generation) + "_" +
+                                  std::to_string(i),
+                              entry.name, entry.search_path,
                               toolbox_i18n::tr("pkg.custom.package_help"));
                }
                if (scan.truncated)

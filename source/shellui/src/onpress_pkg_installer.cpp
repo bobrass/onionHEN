@@ -3,9 +3,11 @@
 #include "pkg_installer.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
+#include <system_error>
 
 namespace {
 
@@ -18,6 +20,39 @@ bool parse_index(const std::string &id, const char *prefix, std::size_t *out) {
   if (!end || *end != '\0' || value > 100000)
     return false;
   *out = static_cast<std::size_t>(value);
+  return true;
+}
+
+bool parse_install_selection(const std::string &id, std::uint64_t *generation,
+                             std::size_t *index) {
+  constexpr char prefix[] = "id_pkg_install_";
+  constexpr std::size_t prefix_size = sizeof(prefix) - 1;
+  if (id.rfind(prefix, 0) != 0)
+    return false;
+
+  const std::size_t separator = id.find('_', prefix_size);
+  if (separator == std::string::npos || separator == prefix_size ||
+      separator + 1 == id.size())
+    return false;
+
+  std::uint64_t parsed_generation = 0;
+  std::size_t parsed_index = 0;
+  const char *generation_begin = id.data() + prefix_size;
+  const char *generation_end = id.data() + separator;
+  const char *index_begin = generation_end + 1;
+  const char *selection_end = id.data() + id.size();
+  const auto generation_result =
+      std::from_chars(generation_begin, generation_end, parsed_generation);
+  const auto index_result =
+      std::from_chars(index_begin, selection_end, parsed_index);
+  if (generation_result.ec != std::errc{} ||
+      generation_result.ptr != generation_end ||
+      index_result.ec != std::errc{} || index_result.ptr != selection_end ||
+      parsed_index > 100000)
+    return false;
+
+  *generation = parsed_generation;
+  *index = parsed_index;
   return true;
 }
 
@@ -83,13 +118,14 @@ OnPressResult remove_path(OnPressContext &ctx) {
 
 OnPressResult install_pkg(OnPressContext &ctx) {
   ctx.dirty = false;
+  std::uint64_t generation = 0;
   std::size_t index = 0;
-  if (!parse_index(ctx.id, "id_pkg_install_", &index)) {
+  if (!parse_install_selection(ctx.id, &generation, &index)) {
     notify("notify.pkg.install_failed", -EINVAL);
     return OnPressResult::Consumed;
   }
   const PkgInstallerResult result = install_scanned_pkg(
-      index, g_settings.custom_pkg_search_paths.data(),
+      generation, index, g_settings.custom_pkg_search_paths.data(),
       g_settings.custom_pkg_search_path_count);
   if (result.started)
     notify("notify.pkg.install_started");

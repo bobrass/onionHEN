@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,7 @@ struct PkgInstallerEntry {
 };
 
 struct PkgInstallerScan {
+  std::uint64_t generation = 0;
   bool accessible = false;
   bool truncated = false;
   std::size_t inaccessible_paths = 0;
@@ -36,6 +38,7 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
 void set_pkg_search_path_draft(const std::string &path);
 const std::string &pkg_search_path_draft();
 void clear_pkg_search_results();
-PkgInstallerResult install_scanned_pkg(std::size_t index,
+PkgInstallerResult install_scanned_pkg(std::uint64_t generation,
+                                       std::size_t index,
                                        const std::string *system_paths,
                                        std::size_t path_count);
