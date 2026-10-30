@@ -75,6 +75,51 @@ int findXmlAttr(const char *start, const char *tag, const char *attr, char *out,
   return 0;
 }
 
+bool isXmlSpace(char value) {
+  return value == ' ' || value == '\t' || value == '\r' || value == '\n';
+}
+
+char asciiLower(char value) {
+  return value >= 'A' && value <= 'Z'
+             ? static_cast<char>(value - 'A' + 'a')
+             : value;
+}
+
+bool equalsAsciiIgnoreCase(const char *value, size_t length,
+                           const char *expected) {
+  const size_t expected_length = std::strlen(expected);
+  if (length != expected_length) {
+    return false;
+  }
+  for (size_t i = 0; i < length; ++i) {
+    if (asciiLower(value[i]) != expected[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool parseAbsoluteValue(const char *value, bool &out) {
+  while (isXmlSpace(*value)) {
+    ++value;
+  }
+  size_t length = std::strlen(value);
+  while (length > 0 && isXmlSpace(value[length - 1])) {
+    --length;
+  }
+  if (length == 0 || (length == 1 && value[0] == '0') ||
+      equalsAsciiIgnoreCase(value, length, "false")) {
+    out = false;
+    return true;
+  }
+  if ((length == 1 && value[0] == '1') ||
+      equalsAsciiIgnoreCase(value, length, "true")) {
+    out = true;
+    return true;
+  }
+  return false;
+}
+
 void stripDashes(char *s) {
   char *p = s;
   while (*p != '\0') {
@@ -180,6 +225,14 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
         continue;
       }
 
+      bool absolute_value = false;
+      if (!parseAbsoluteValue(absolute, absolute_value)) {
+        LOG_WARN("[engine] parse_xml invalid Absolute value cheat=%s",
+                 entry->name);
+        line_cursor = line_end + 12;
+        continue;
+      }
+
       if (onion_cheat_entry_ensure_patch(entry) != 0) {
         LOG_ERROR("[engine] parse_xml ensure_patch failed");
         line_cursor = line_end + 12;
@@ -194,7 +247,7 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
           patch->section = section_num;
         }
       }
-      patch->absolute = absolute[0] != '\0';
+      patch->absolute = absolute_value;
 
       stripDashes(on);
       stripDashes(off);
