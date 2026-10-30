@@ -1,11 +1,12 @@
-#include <onion/log.h>
-#include "cheats/cheat_engine_internal.h"
-
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <onion/log.h>
+#include "cheats/cheat_engine_internal.h"
 #include "util_platform.h"
 
 /**
@@ -103,6 +104,34 @@ int onion_cheat_parse_hex_u64(const char *hex, uint64_t *out) {
   }
 
   *out = parsed;
+  return 0;
+}
+
+int onion_cheat_parse_section(const char *text, int *out) {
+  char *end = NULL;
+  long value;
+
+  if (text == NULL || out == NULL) {
+    return -1;
+  }
+  while (isspace((unsigned char)*text)) {
+    ++text;
+  }
+  if (*text == '\0' || *text == '-') {
+    return -1;
+  }
+  errno = 0;
+  value = strtol(text, &end, 10);
+  if (end == text || errno == ERANGE || value < 0 || value > INT_MAX) {
+    return -1;
+  }
+  while (isspace((unsigned char)*end)) {
+    ++end;
+  }
+  if (*end != '\0') {
+    return -1;
+  }
+  *out = (int)value;
   return 0;
 }
 

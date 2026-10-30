@@ -1,7 +1,9 @@
 #include "cheats/i_cheat_parser.hpp"
 
 #include <cstdio>
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <string>
 
 #include "cheats/cheat_engine_internal.h"
@@ -42,9 +44,19 @@ bool parseMemoryObject(const cJSON *object, onion_patch_t *patch) {
 
   const cJSON *section = onion_cjson::item(object, "section");
   if (section) {
-    const int value = onion_cjson::int_value(section);
-    if (value >= 0) {
-      patch->section = value;
+    if (cJSON_IsNumber(section)) {
+      const double value = section->valuedouble;
+      if (!std::isfinite(value) || value < 0 ||
+          value > std::numeric_limits<int>::max() || std::floor(value) != value) {
+        return false;
+      }
+      patch->section = static_cast<int>(value);
+    } else if (cJSON_IsString(section) && section->valuestring) {
+      if (onion_cheat_parse_section(section->valuestring, &patch->section) < 0) {
+        return false;
+      }
+    } else {
+      return false;
     }
   }
   patch->absolute =

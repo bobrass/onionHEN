@@ -281,6 +281,7 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       char off[512];
       char absolute[32];
       uint64_t parsed_offset = 0;
+      int parsed_section = 0;
       onion_patch_t *patch = nullptr;
 
       if (line_end == nullptr || line_end > cheat_end) {
@@ -324,6 +325,14 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
         continue;
       }
 
+      if (section[0] != '\0' &&
+          onion_cheat_parse_section(section, &parsed_section) < 0) {
+        LOG_WARN("[engine] parse_xml invalid Section value cheat=%s",
+                 entry->name);
+        line_cursor = line_end + 12;
+        continue;
+      }
+
       if (onion_cheat_entry_ensure_patch(entry) != 0) {
         LOG_ERROR("[engine] parse_xml ensure_patch failed");
         line_cursor = line_end + 12;
@@ -332,12 +341,7 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       patch = &entry->patches[entry->patch_count];
       std::memset(patch, 0, sizeof(*patch));
       patch->offset = parsed_offset;
-      if (section[0] != '\0') {
-        const int section_num = std::atoi(section);
-        if (section_num >= 0) {
-          patch->section = section_num;
-        }
-      }
+      patch->section = parsed_section;
       patch->absolute = absolute_value;
 
       stripDashes(on);
