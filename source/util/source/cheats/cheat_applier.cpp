@@ -61,10 +61,11 @@ std::string ownerFor(const onion_cheat_file_t &file, int index,
          "#" + std::to_string(index);
 }
 
-uint64_t resolveAddr(pid_t pid, const onion_patch_t &patch, bool is_ps2,
-                     uint64_t base) {
+bool resolveAddr(pid_t pid, const onion_patch_t &patch, bool is_ps2,
+                 uint64_t base, uint64_t &address) {
   if (is_ps2 || patch.absolute) {
-    return patch.offset;
+    address = patch.offset;
+    return true;
   }
   if (patch.section > 0) {
     const intptr_t section_base = kernel_dynlib_mapbase_addr(
@@ -77,34 +78,45 @@ uint64_t resolveAddr(pid_t pid, const onion_patch_t &patch, bool is_ps2,
           patch.section, static_cast<int>(pid));
     }
   }
-  return base + patch.offset;
+  if (patch.offset > std::numeric_limits<uint64_t>::max() - base) {
+    return false;
+  }
+  address = base + patch.offset;
+  return true;
 }
 
-void fixMasterCode(const game_context_t &game, onion_cheat_file_t &file,
+bool fixMasterCode(const game_context_t &game, onion_cheat_file_t &file,
                    onion_cheat_entry_t &entry, bool is_ps2, uint64_t base,
                    IMemoryBackend &mem) {
   if (file.master_code_id < 0 || !containsToken(entry.name, "MC") ||
       entry.patch_count != 1 || entry.patches[0].section == 0) {
-    return;
+    return true;
   }
   auto &master = file.cheats[file.master_code_id];
   if (master.patch_count == 0) {
-    return;
+    return true;
   }
   auto &mp = master.patches[0];
   auto &dp = entry.patches[0];
-  const uint64_t mc_addr = resolveAddr(game.pid, mp, is_ps2, base);
+  uint64_t mc_addr = 0;
+  if (!resolveAddr(game.pid, mp, is_ps2, base, mc_addr)) {
+    return false;
+  }
   std::vector<uint8_t> buf(mp.on_len);
   if (mem.read(game.pid, mc_addr, buf.data(), mp.on_len) < 0) {
-    return;
+    return true;
   }
   for (size_t i = 0; i + dp.off_len <= mp.on_len; ++i) {
     if (std::memcmp(buf.data() + i, dp.off, dp.off_len) == 0) {
-      dp.offset = mp.offset + i;
-      return;
+      if (i > std::numeric_limits<uint64_t>::max() - mp.offset) {
+        return false;
+      }
+      dp.offset = mp.offset + static_cast<uint64_t>(i);
+      return true;
     }
   }
   dp.offset = ((mp.offset >> 8) << 8) | (dp.offset & 0xff);
+  return true;
 }
 
 std::string status_tr(const char *key, ...) {
@@ -209,8 +221,11 @@ int CheatApplier::toggle(const game_context_t &game, onion_cheat_file_t &file,
       (containsToken(entry.name, "Master Code") ||
        containsToken(entry.name, "Mastercode"))) {
     file.master_code_id = index;
-  } else {
-    fixMasterCode(target, file, entry, is_ps2, base, *backend);
+  } else if (!fixMasterCode(target, file, entry, is_ps2, base, *backend)) {
+    LOG_ERROR("[Cheat] Master-code address overflow pid=%d patch=%s",
+              static_cast<int>(pid), entry.name);
+    status = status_tr("notify.cheats.invalid_patch", entry.name);
+    return -1;
   }
 
   std::vector<ResolvedPatch> resolved;
@@ -245,8 +260,18 @@ int CheatApplier::toggle(const game_context_t &game, onion_cheat_file_t &file,
       status = status_tr("notify.cheats.asm_unassembled", entry.name);
       return -1;
     }
-    resolved.push_back({&patch, resolveAddr(pid, patch, is_ps2, base),
-                        patch.on_len, patch.off_len});
+    uint64_t address = 0;
+    if (!resolveAddr(pid, patch, is_ps2, base, address) ||
+        reserve_len - 1 > std::numeric_limits<uint64_t>::max() - address) {
+      LOG_ERROR(
+          "[Cheat] Invalid patch address pid=%d patch=%zu/%zu offset=0x%llx",
+          static_cast<int>(pid), i + 1, entry.patch_count,
+          static_cast<unsigned long long>(patch.offset));
+      status = status_tr("notify.cheats.invalid_patch", entry.name);
+      return -1;
+    }
+    resolved.push_back(
+        {&patch, address, patch.on_len, patch.off_len});
   }
 
   const bool enabling = !entry.enabled;
