@@ -98,8 +98,22 @@ bool fixMasterCode(const game_context_t &game, onion_cheat_file_t &file,
   }
   auto &mp = master.patches[0];
   auto &dp = entry.patches[0];
+  if (mp.on_len == 0 || mp.on_len != mp.off_len ||
+      mp.on_len > ONION_MAX_PATCH_BYTES) {
+    LOG_ERROR("[Cheat] Invalid master-code patch sizes pid=%d on_len=%zu "
+              "off_len=%zu",
+              static_cast<int>(game.pid), mp.on_len, mp.off_len);
+    return false;
+  }
   uint64_t mc_addr = 0;
   if (!resolveAddr(game.pid, mp, is_ps2, base, mc_addr)) {
+    LOG_ERROR("[Cheat] Master-code address overflow pid=%d",
+              static_cast<int>(game.pid));
+    return false;
+  }
+  if (mp.on_len - 1 > std::numeric_limits<uint64_t>::max() - mc_addr) {
+    LOG_ERROR("[Cheat] Master-code read range overflow pid=%d",
+              static_cast<int>(game.pid));
     return false;
   }
   std::vector<uint8_t> buf(mp.on_len);
@@ -109,6 +123,8 @@ bool fixMasterCode(const game_context_t &game, onion_cheat_file_t &file,
   for (size_t i = 0; i + dp.off_len <= mp.on_len; ++i) {
     if (std::memcmp(buf.data() + i, dp.off, dp.off_len) == 0) {
       if (i > std::numeric_limits<uint64_t>::max() - mp.offset) {
+        LOG_ERROR("[Cheat] Master-code match offset overflow pid=%d",
+                  static_cast<int>(game.pid));
         return false;
       }
       dp.offset = mp.offset + static_cast<uint64_t>(i);
@@ -222,8 +238,6 @@ int CheatApplier::toggle(const game_context_t &game, onion_cheat_file_t &file,
        containsToken(entry.name, "Mastercode"))) {
     file.master_code_id = index;
   } else if (!fixMasterCode(target, file, entry, is_ps2, base, *backend)) {
-    LOG_ERROR("[Cheat] Master-code address overflow pid=%d patch=%s",
-              static_cast<int>(pid), entry.name);
     status = status_tr("notify.cheats.invalid_patch", entry.name);
     return -1;
   }
