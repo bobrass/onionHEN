@@ -54,41 +54,109 @@ const char *findXmlTagValue(const char *start, const char *end,
   return close + std::strlen(close_tag);
 }
 
+bool isXmlSpace(char value) {
+  return value == ' ' || value == '\t' || value == '\r' || value == '\n';
+}
+
 int findXmlAttr(const char *start, const char *tag, const char *attr, char *out,
                 size_t out_size) {
+  if (start == nullptr || tag == nullptr || attr == nullptr || out == nullptr ||
+      out_size == 0) {
+    return -1;
+  }
   char marker[64];
-  char attr_marker[64];
-
   std::snprintf(marker, sizeof(marker), "<%s", tag);
-  std::snprintf(attr_marker, sizeof(attr_marker), "%s=\"", attr);
-  const char *node = std::strstr(start, marker);
+  const size_t marker_len = std::strlen(marker);
+  const char *node = start;
+  while ((node = std::strstr(node, marker)) != nullptr) {
+    const char after_tag_name = node[marker_len];
+    if (after_tag_name == '>' || after_tag_name == '/' ||
+        isXmlSpace(after_tag_name)) {
+      break;
+    }
+    node += marker_len;
+  }
   if (node == nullptr) {
     out[0] = '\0';
     return -1;
   }
-  const char *val = std::strstr(node, attr_marker);
-  if (val == nullptr) {
-    out[0] = '\0';
-    return -1;
-  }
-  val += std::strlen(attr_marker);
-  const char *end = std::strchr(val, '"');
-  if (end == nullptr) {
-    out[0] = '\0';
-    return -1;
-  }
-  size_t len = static_cast<size_t>(end - val);
-  if (len >= out_size) {
-    len = out_size - 1;
-  }
-  std::memcpy(out, val, len);
-  out[len] = '\0';
-  onion_cheat_xml_unescape(out);
-  return 0;
-}
 
-bool isXmlSpace(char value) {
-  return value == ' ' || value == '\t' || value == '\r' || value == '\n';
+  const char *tag_end = nullptr;
+  char quote = '\0';
+  for (const char *p = node + marker_len; *p != '\0'; ++p) {
+    if (quote != '\0') {
+      if (*p == quote) {
+        quote = '\0';
+      }
+    } else if (*p == '"' || *p == '\'') {
+      quote = *p;
+    } else if (*p == '>') {
+      tag_end = p;
+      break;
+    } else if (*p == '<') {
+      break;
+    }
+  }
+  if (tag_end == nullptr) {
+    out[0] = '\0';
+    return -1;
+  }
+
+  const size_t attr_len = std::strlen(attr);
+  const char *p = node + marker_len;
+  while (p < tag_end) {
+    while (p < tag_end && (isXmlSpace(*p) || *p == '/')) {
+      ++p;
+    }
+    if (p >= tag_end) {
+      break;
+    }
+
+    const char *name = p;
+    while (p < tag_end && !isXmlSpace(*p) && *p != '=' && *p != '/') {
+      ++p;
+    }
+    const size_t name_len = static_cast<size_t>(p - name);
+    while (p < tag_end && isXmlSpace(*p)) {
+      ++p;
+    }
+    if (p >= tag_end || *p != '=') {
+      out[0] = '\0';
+      return -1;
+    }
+    ++p;
+    while (p < tag_end && isXmlSpace(*p)) {
+      ++p;
+    }
+    if (p >= tag_end || (*p != '"' && *p != '\'')) {
+      out[0] = '\0';
+      return -1;
+    }
+    const char value_quote = *p++;
+    const char *value = p;
+    while (p < tag_end && *p != value_quote) {
+      ++p;
+    }
+    if (p >= tag_end) {
+      out[0] = '\0';
+      return -1;
+    }
+
+    if (name_len == attr_len && std::memcmp(name, attr, attr_len) == 0) {
+      size_t len = static_cast<size_t>(p - value);
+      if (len >= out_size) {
+        len = out_size - 1;
+      }
+      std::memcpy(out, value, len);
+      out[len] = '\0';
+      onion_cheat_xml_unescape(out);
+      return 0;
+    }
+    ++p;
+  }
+
+  out[0] = '\0';
+  return -1;
 }
 
 char asciiLower(char value) {
