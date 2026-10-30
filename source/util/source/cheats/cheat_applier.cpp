@@ -219,6 +219,7 @@ int CheatApplier::toggle(const game_context_t &game, onion_cheat_file_t &file,
     auto &patch = entry.patches[i];
     const size_t reserve_len = std::max(patch.on_len, patch.off_len);
     if (reserve_len == 0 || reserve_len > ONION_MAX_PATCH_BYTES ||
+        patch.on_len != patch.off_len ||
         (!entry.enabled && patch.on_len == 0) ||
         (entry.enabled && patch.off_len == 0)) {
       const char *reason = "missing on bytes";
@@ -226,6 +227,8 @@ int CheatApplier::toggle(const game_context_t &game, onion_cheat_file_t &file,
         reason = "empty patch";
       } else if (reserve_len > ONION_MAX_PATCH_BYTES) {
         reason = "patch exceeds byte limit";
+      } else if (patch.on_len != patch.off_len) {
+        reason = "on/off size mismatch";
       } else if (entry.enabled) {
         reason = "missing off bytes";
       }
