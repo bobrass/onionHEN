@@ -131,7 +131,7 @@ int test_parse_json_buffer_rejects_invalid_hex() {
   return 0;
 }
 
-int test_parse_json_ignores_out_of_range_section() {
+int test_parse_json_preserves_section_handle() {
   const char *json =
       "{"
       "\"process\":\"eboot.bin\","
@@ -149,7 +149,7 @@ int test_parse_json_ignores_out_of_range_section() {
   static onion_cheat_file_t file;
 
   TEST_ASSERT_EQ_INT(0, load_buf("json", json, file));
-  TEST_ASSERT_EQ_INT(0, file.cheats[0].patches[0].section);
+  TEST_ASSERT_EQ_INT(99, file.cheats[0].patches[0].section);
   onion_cheat_file_clear(&file);
   return 0;
 }
@@ -206,7 +206,7 @@ int test_parse_xml_unescapes_ampersand() {
   return 0;
 }
 
-int test_parse_xml_ignores_out_of_range_section() {
+int test_parse_xml_preserves_section_handle() {
   const char *xml =
       "<Trainer Process=\"eboot.bin\" Game=\"Demo\">"
       "<Cheat Text=\"Patch\">"
@@ -217,7 +217,7 @@ int test_parse_xml_ignores_out_of_range_section() {
   static onion_cheat_file_t file;
 
   TEST_ASSERT_EQ_INT(0, load_buf("shn", xml, file));
-  TEST_ASSERT_EQ_INT(0, file.cheats[0].patches[0].section);
+  TEST_ASSERT_EQ_INT(99, file.cheats[0].patches[0].section);
   onion_cheat_file_clear(&file);
   return 0;
 }
@@ -378,14 +378,14 @@ extern "C" int test_cheat_parsers_suite(void) {
                              test_parse_json_rejects_trailing_garbage);
   failures += onion_test_run("cheat json rejects invalid hex",
                              test_parse_json_buffer_rejects_invalid_hex);
-  failures += onion_test_run("cheat json ignores out-of-range section",
-                             test_parse_json_ignores_out_of_range_section);
+  failures += onion_test_run("cheat json preserves section handle",
+                             test_parse_json_preserves_section_handle);
   failures +=
       onion_test_run("cheat xml parse success", test_parse_xml_buffer_success);
   failures += onion_test_run("cheat xml unescapes ampersand",
                              test_parse_xml_unescapes_ampersand);
-  failures += onion_test_run("cheat xml ignores out-of-range section",
-                             test_parse_xml_ignores_out_of_range_section);
+  failures += onion_test_run("cheat xml preserves section handle",
+                             test_parse_xml_preserves_section_handle);
   failures +=
       onion_test_run("cheat mc4 load success", test_load_file_mc4_success);
   failures +=
