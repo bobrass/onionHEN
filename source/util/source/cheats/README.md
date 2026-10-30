@@ -56,6 +56,10 @@ module's base before applying the patch. If the handle is not loaded, it logs a
 warning and falls back to the main module base. This value is separate from
 the loaded module's `sections[]` segment array.
 
+In SHN XML, `<Absolute>` accepts `true`/`false` (case-insensitive) and `1`/`0`.
+An omitted or empty value means `false`; other values cause the patch to be
+skipped with a warning.
+
 ## Memory
 
 | FW major | Backend |
