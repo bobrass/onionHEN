@@ -12,21 +12,33 @@
 namespace onion::cheats {
 namespace {
 
-const char *findXmlTagValue(const char *start, const char *tag, char *out,
-                            size_t out_size) {
+const char *findBounded(const char *start, const char *end,
+                        const char *needle) {
+  const size_t needle_len = std::strlen(needle);
+  for (const char *p = start;
+       p <= end && static_cast<size_t>(end - p) >= needle_len; ++p) {
+    if (std::memcmp(p, needle, needle_len) == 0) {
+      return p;
+    }
+  }
+  return nullptr;
+}
+
+const char *findXmlTagValue(const char *start, const char *end,
+                            const char *tag, char *out, size_t out_size) {
   char open_tag[64];
   char close_tag[64];
 
   std::snprintf(open_tag, sizeof(open_tag), "<%s>", tag);
   std::snprintf(close_tag, sizeof(close_tag), "</%s>", tag);
 
-  const char *open = std::strstr(start, open_tag);
+  const char *open = findBounded(start, end, open_tag);
   if (open == nullptr) {
     out[0] = '\0';
     return nullptr;
   }
   open += std::strlen(open_tag);
-  const char *close = std::strstr(open, close_tag);
+  const char *close = findBounded(open, end, close_tag);
   if (close == nullptr) {
     out[0] = '\0';
     return nullptr;
@@ -213,11 +225,14 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       on[0] = '\0';
       off[0] = '\0';
       absolute[0] = '\0';
-      findXmlTagValue(line_cursor, "Offset", offset, sizeof(offset));
-      findXmlTagValue(line_cursor, "Section", section, sizeof(section));
-      findXmlTagValue(line_cursor, "ValueOn", on, sizeof(on));
-      findXmlTagValue(line_cursor, "ValueOff", off, sizeof(off));
-      findXmlTagValue(line_cursor, "Absolute", absolute, sizeof(absolute));
+      findXmlTagValue(line_cursor, line_end, "Offset", offset,
+                      sizeof(offset));
+      findXmlTagValue(line_cursor, line_end, "Section", section,
+                      sizeof(section));
+      findXmlTagValue(line_cursor, line_end, "ValueOn", on, sizeof(on));
+      findXmlTagValue(line_cursor, line_end, "ValueOff", off, sizeof(off));
+      findXmlTagValue(line_cursor, line_end, "Absolute", absolute,
+                      sizeof(absolute));
 
       if (offset[0] == '\0' || on[0] == '\0' || off[0] == '\0') {
         LOG_WARN("[engine] parse_xml incomplete patch cheat=%s", entry->name);
