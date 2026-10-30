@@ -49,6 +49,63 @@ int onion_cheat_hex_decode(const char *hex, uint8_t *out, size_t max_len,
   return i == len ? 0 : -1;
 }
 
+static int hex_digit_value(char value) {
+  if (value >= '0' && value <= '9') {
+    return value - '0';
+  }
+  if (value >= 'a' && value <= 'f') {
+    return value - 'a' + 10;
+  }
+  if (value >= 'A' && value <= 'F') {
+    return value - 'A' + 10;
+  }
+  return -1;
+}
+
+static int is_ascii_space(char value) {
+  return value == ' ' || value == '\t' || value == '\r' || value == '\n';
+}
+
+int onion_cheat_parse_hex_u64(const char *hex, uint64_t *out) {
+  const char *cursor = hex;
+  uint64_t parsed = 0;
+  int digit;
+
+  if (hex == NULL || out == NULL) {
+    return -1;
+  }
+
+  while (is_ascii_space(*cursor)) {
+    ++cursor;
+  }
+  if (cursor[0] == '0' && (cursor[1] == 'x' || cursor[1] == 'X')) {
+    cursor += 2;
+  }
+
+  digit = hex_digit_value(*cursor);
+  if (digit < 0) {
+    return -1;
+  }
+  do {
+    if (parsed > (UINT64_MAX - (uint64_t)digit) / 16) {
+      return -1;
+    }
+    parsed = parsed * 16 + (uint64_t)digit;
+    ++cursor;
+    digit = hex_digit_value(*cursor);
+  } while (digit >= 0);
+
+  while (is_ascii_space(*cursor)) {
+    ++cursor;
+  }
+  if (*cursor != '\0') {
+    return -1;
+  }
+
+  *out = parsed;
+  return 0;
+}
+
 /**
  * 从文件系统加载文件内容到缓冲区。
  * 文件大小限制为 long 类型正数范围内。

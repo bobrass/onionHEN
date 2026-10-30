@@ -1,8 +1,8 @@
 #include "cheats/i_cheat_parser.hpp"
 
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include "cheats/cheat_engine_internal.h"
 #include "onion_cjson.hpp"
@@ -29,8 +29,10 @@ bool parseMemoryObject(const cJSON *object, onion_patch_t *patch) {
   }
 
   std::memset(patch, 0, sizeof(*patch));
-  patch->offset = std::strtoull(
-      onion_cjson::scalar_string(offset).c_str(), nullptr, 16);
+  const std::string offset_text = onion_cjson::scalar_string(offset);
+  if (onion_cheat_parse_hex_u64(offset_text.c_str(), &patch->offset) < 0) {
+    return false;
+  }
   if (onion_cheat_hex_decode(on, patch->on, sizeof(patch->on),
                              &patch->on_len) < 0 ||
       onion_cheat_hex_decode(off, patch->off, sizeof(patch->off),
