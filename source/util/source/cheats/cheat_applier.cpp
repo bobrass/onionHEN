@@ -12,6 +12,8 @@
 #include "cheats/i_memory_backend.hpp"
 #include "util_platform.h"
 
+#include <ps5/kernel.h>
+
 extern "C" {
 }
 
@@ -59,12 +61,22 @@ std::string ownerFor(const onion_cheat_file_t &file, int index,
          "#" + std::to_string(index);
 }
 
-uint64_t resolveAddr(const util_module_info_t &mod, const onion_patch_t &patch,
-                     bool is_ps2, uint64_t base) {
+uint64_t resolveAddr(pid_t pid, const onion_patch_t &patch, bool is_ps2,
+                     uint64_t base) {
   if (is_ps2 || patch.absolute) {
     return patch.offset;
   }
-  (void)mod;
+  if (patch.section > 0) {
+    const intptr_t section_base = kernel_dynlib_mapbase_addr(
+        pid, static_cast<uint32_t>(patch.section));
+    if (section_base > 0) {
+      base = static_cast<uint64_t>(section_base);
+    } else {
+      LOG_WARN(
+          "[Cheat] Section handle %d unresolved for pid=%d; using main module base",
+          patch.section, static_cast<int>(pid));
+    }
+  }
   return base + patch.offset;
 }
 
@@ -81,8 +93,7 @@ void fixMasterCode(const game_context_t &game, onion_cheat_file_t &file,
   }
   auto &mp = master.patches[0];
   auto &dp = entry.patches[0];
-  const uint64_t mc_addr =
-      (is_ps2 || mp.absolute) ? mp.offset : (base + mp.offset);
+  const uint64_t mc_addr = resolveAddr(game.pid, mp, is_ps2, base);
   std::vector<uint8_t> buf(mp.on_len);
   if (mem.read(game.pid, mc_addr, buf.data(), mp.on_len) < 0) {
     return;
@@ -231,7 +242,7 @@ int CheatApplier::toggle(const game_context_t &game, onion_cheat_file_t &file,
       status = status_tr("notify.cheats.asm_unassembled", entry.name);
       return -1;
     }
-    resolved.push_back({&patch, resolveAddr(mod, patch, is_ps2, base),
+    resolved.push_back({&patch, resolveAddr(pid, patch, is_ps2, base),
                         patch.on_len, patch.off_len});
   }
 

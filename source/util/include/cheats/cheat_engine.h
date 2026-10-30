@@ -24,7 +24,7 @@ extern "C" {
 #define ONION_AUTHOR_NAME_LEN 64
 #endif
 
-/* Section bounds (matches util_module_info_t / NineS util_module_info_t) */
+/* Loaded-module segment count (matches util_module_info_t / NineS). */
 #ifndef MODULE_INFO_MAX_SECTIONS
 #define MODULE_INFO_MAX_SECTIONS UTIL_MODULE_INFO_MAX_SECTIONS
 #endif
@@ -33,7 +33,7 @@ typedef struct {
   bool code_cave_reloc;
   bool absolute;
   bool is_asm; /* ShnExt may leave unassembled ASM text */
-  int section;
+  int section; /* SHN/JSON dynlib handle index; 0 means the main module. */
   uint64_t offset;
   size_t on_len;
   size_t off_len;

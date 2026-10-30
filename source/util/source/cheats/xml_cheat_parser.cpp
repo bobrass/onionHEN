@@ -190,7 +190,7 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       patch->offset = std::strtoull(offset, nullptr, 16);
       if (section[0] != '\0') {
         const int section_num = std::atoi(section);
-        if (section_num < MODULE_INFO_MAX_SECTIONS) {
+        if (section_num >= 0) {
           patch->section = section_num;
         }
       }

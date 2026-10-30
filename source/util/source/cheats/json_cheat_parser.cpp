@@ -41,7 +41,7 @@ bool parseMemoryObject(const cJSON *object, onion_patch_t *patch) {
   const cJSON *section = onion_cjson::item(object, "section");
   if (section) {
     const int value = onion_cjson::int_value(section);
-    if (value >= 0 && value < MODULE_INFO_MAX_SECTIONS) {
+    if (value >= 0) {
       patch->section = value;
     }
   }

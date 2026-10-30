@@ -50,6 +50,12 @@ into this directory with their original names. The repository returns all
 sources compatible with title/version/process; format priority only
 determines deterministic display order.
 
+For GoldHEN SHN and converted JSON patches, `Section=0` uses the main module
+base. A positive `Section` is a dynlib handle ID; OnionHEN resolves that
+module's base before applying the patch. If the handle is not loaded, it logs a
+warning and falls back to the main module base. This value is separate from
+the loaded module's `sections[]` segment array.
+
 ## Memory
 
 | FW major | Backend |
