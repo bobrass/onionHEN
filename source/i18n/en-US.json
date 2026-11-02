@@ -329,7 +329,11 @@
     "plugin.kstuff.title": "Kstuff",
     "plugin.kstuff.sub": "Kernel patch for fSELF / fPKG support, loaded at OnionHEN startup",
     "plugin.kstuff.status.autoload": "Loads with OnionHEN",
-    "plugin.kstuff.status.manual": "Not loaded automatically"
+    "plugin.kstuff.status.manual": "Not loaded automatically",
+    "about.support_bundle": "Support bundle",
+    "about.support_bundle.sub": "Create a local bundle of recent OnionHEN logs",
+    "about.support_bundle.notice": "Creates a file in /data/OnionHEN/support/ with the last 128 KiB of each available main, utility, and crash log. Logs may contain title IDs, network addresses, and file paths; inspect before sharing. No config, cheats, or user payloads are included. Nothing is uploaded.",
+    "about.support_bundle.create": "Create support bundle"
   },
   "notifications": {
     "notify.pkg.path_invalid": "Enter an absolute /data/... or /mnt/... folder path without . or .. components.",
@@ -488,6 +492,8 @@
     "notify.account.already": "This account is already activated",
     "notify.account.failed": "Account activation failed",
     "notify.account.invalid": "Could not read the current user account",
-    "notify.brand": "OnionHEN"
+    "notify.brand": "OnionHEN",
+    "notify.support_bundle.saved_fmt": "Support bundle saved: %s",
+    "notify.support_bundle.failed": "Could not create the support bundle; check storage space and permissions."
   }
 }

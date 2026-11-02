@@ -329,7 +329,11 @@
     "plugins.external.progress_stopping": "プラグインを停止しています...",
     "plugins.external.progress_stopping_sub": "プラグインプロセスを終了しリソースをクリーンアップしています。しばらくお待ちください",
     "plugins.external.progress_completed": "完了しました",
-    "plugins.external.progress_failed": "操作に失敗しました"
+    "plugins.external.progress_failed": "操作に失敗しました",
+    "about.support_bundle": "サポートバンドル",
+    "about.support_bundle.sub": "最近のOnionHENログをローカルにまとめます",
+    "about.support_bundle.notice": "/data/OnionHEN/support/ に、利用可能なメイン、ユーティリティ、クラッシュ各ログの末尾128 KiBを保存します。ログにはタイトルID、ネットワークアドレス、ファイルパスが含まれる場合があります。共有前に確認してください。設定、チート、ユーザーペイロードは含まれず、自動アップロードもしません。",
+    "about.support_bundle.create": "サポートバンドルを作成"
   },
   "notifications": {
     "notify.pkg.path_invalid": "Enter an absolute /data/... or /mnt/... folder path without . or .. components.",
@@ -488,6 +492,8 @@
     "notify.account.already": "このアカウントはすでに有効化されています",
     "notify.account.failed": "アカウントの有効化に失敗しました",
     "notify.account.invalid": "現在のユーザーアカウントを読み取れませんでした",
-    "notify.brand": "OnionHEN"
+    "notify.brand": "OnionHEN",
+    "notify.support_bundle.saved_fmt": "サポートバンドルを保存しました: %s",
+    "notify.support_bundle.failed": "サポートバンドルを作成できません。空き容量と権限を確認してください。"
   }
 }

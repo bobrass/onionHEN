@@ -329,7 +329,11 @@
     "plugins.external.progress_stopping": "正在停止插件...",
     "plugins.external.progress_stopping_sub": "正在關閉插件行程並清理資源，請稍候",
     "plugins.external.progress_completed": "已完成",
-    "plugins.external.progress_failed": "操作失敗"
+    "plugins.external.progress_failed": "操作失敗",
+    "about.support_bundle": "支援套件",
+    "about.support_bundle.sub": "在本機建立近期 OnionHEN 記錄套件",
+    "about.support_bundle.notice": "在 /data/OnionHEN/support/ 建立檔案，包含每個可用主記錄、工具記錄與當機記錄最後 128 KiB。記錄可能包含標題 ID、網路位址和檔案路徑；分享前請檢查。不包含設定、作弊檔或使用者載荷，也不會上傳任何內容。",
+    "about.support_bundle.create": "建立支援套件"
   },
   "notifications": {
     "notify.pkg.path_invalid": "Enter an absolute /data/... or /mnt/... folder path without . or .. components.",
@@ -488,6 +492,8 @@
     "notify.account.already": "此帳號已啟用",
     "notify.account.failed": "帳號啟用失敗",
     "notify.account.invalid": "無法讀取目前使用者帳號",
-    "notify.brand": "OnionHEN"
+    "notify.brand": "OnionHEN",
+    "notify.support_bundle.saved_fmt": "支援套件已儲存：%s",
+    "notify.support_bundle.failed": "無法建立支援套件；請檢查儲存空間與權限。"
   }
 }

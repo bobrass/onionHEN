@@ -329,7 +329,11 @@
     "plugins.external.progress_stopping": "플러그인을 중지하는 중...",
     "plugins.external.progress_stopping_sub": "플러그인 프로세스를 종료하고 리소스를 정리하는 중입니다. 잠시 기다려 주세요",
     "plugins.external.progress_completed": "완료됨",
-    "plugins.external.progress_failed": "작업 실패"
+    "plugins.external.progress_failed": "작업 실패",
+    "about.support_bundle": "지원 번들",
+    "about.support_bundle.sub": "최근 OnionHEN 로그를 로컬 번들로 만들기",
+    "about.support_bundle.notice": "사용 가능한 메인, 유틸리티, 크래시 로그 각각의 마지막 128KiB를 /data/OnionHEN/support/에 저장합니다. 로그에는 타이틀 ID, 네트워크 주소, 파일 경로가 포함될 수 있으니 공유 전에 확인하세요. 설정, 치트, 사용자 페이로드는 포함하지 않으며 업로드하지 않습니다.",
+    "about.support_bundle.create": "지원 번들 만들기"
   },
   "notifications": {
     "notify.pkg.path_invalid": "Enter an absolute /data/... or /mnt/... folder path without . or .. components.",
@@ -488,6 +492,8 @@
     "notify.account.already": "이 계정은 이미 활성화되어 있습니다",
     "notify.account.failed": "계정 활성화에 실패했습니다",
     "notify.account.invalid": "현재 사용자 계정을 읽을 수 없습니다",
-    "notify.brand": "OnionHEN"
+    "notify.brand": "OnionHEN",
+    "notify.support_bundle.saved_fmt": "지원 번들 저장됨: %s",
+    "notify.support_bundle.failed": "지원 번들을 만들 수 없습니다. 저장 공간과 권한을 확인하세요."
   }
 }

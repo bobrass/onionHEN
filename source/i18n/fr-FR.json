@@ -329,7 +329,11 @@
     "plugins.external.progress_stopping": "Arrêt du plugin...",
     "plugins.external.progress_stopping_sub": "Veuillez patienter pendant l'arrêt du plugin",
     "plugins.external.progress_completed": "Terminé",
-    "plugins.external.progress_failed": "Échec de l'opération"
+    "plugins.external.progress_failed": "Échec de l'opération",
+    "about.support_bundle": "Dossier de diagnostic",
+    "about.support_bundle.sub": "Créer un dossier local avec les journaux OnionHEN récents",
+    "about.support_bundle.notice": "Crée un fichier dans /data/OnionHEN/support/ contenant les 128 derniers Kio de chaque journal principal, utilitaire et de plantage disponible. Les journaux peuvent contenir des identifiants de titre, des adresses réseau et des chemins de fichiers ; vérifiez-les avant partage. Aucun réglage, code de triche ou payload utilisateur n’est inclus. Aucun envoi n’est effectué.",
+    "about.support_bundle.create": "Créer le dossier de diagnostic"
   },
   "notifications": {
     "notify.pkg.path_invalid": "Enter an absolute /data/... or /mnt/... folder path without . or .. components.",
@@ -488,6 +492,8 @@
     "notify.account.already": "Ce compte est déjà activé",
     "notify.account.failed": "Échec de l’activation du compte",
     "notify.account.invalid": "Impossible de lire le compte de l’utilisateur actuel",
-    "notify.brand": "OnionHEN"
+    "notify.brand": "OnionHEN",
+    "notify.support_bundle.saved_fmt": "Dossier de diagnostic enregistré : %s",
+    "notify.support_bundle.failed": "Impossible de créer le dossier de diagnostic ; vérifiez l’espace et les permissions."
   }
 }

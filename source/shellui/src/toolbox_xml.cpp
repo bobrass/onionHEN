@@ -907,6 +907,15 @@ void append_toolbox_about_group(ps5ui::Group& g) {
       toolbox_i18n::format("about.build", ONIONHEN_VERSION);
 
   g.label("id_about_build", build_line, ps5ui::Style::Center)
+      .group("id_support_bundle", toolbox_i18n::tr("about.support_bundle"),
+             [](ps5ui::Group& s) {
+               s.label("id_support_bundle_notice",
+                       toolbox_i18n::tr("about.support_bundle.notice"),
+                       ps5ui::Style::Center)
+                   .button("id_support_bundle_create",
+                           toolbox_i18n::tr("about.support_bundle.create"));
+             },
+             toolbox_i18n::tr("about.support_bundle.sub"))
       .group(
        "id_donation_methods", toolbox_i18n::tr("about.donate"),
        [](ps5ui::Group& d) {

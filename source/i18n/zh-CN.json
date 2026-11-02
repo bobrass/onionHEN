@@ -329,7 +329,11 @@
     "plugin.kstuff.title": "Kstuff",
     "plugin.kstuff.sub": "支持 fSELF / fPKG 的内核补丁，OnionHEN 启动时加载",
     "plugin.kstuff.status.autoload": "随 OnionHEN 启动加载",
-    "plugin.kstuff.status.manual": "启动时不自动加载"
+    "plugin.kstuff.status.manual": "启动时不自动加载",
+    "about.support_bundle": "支持包",
+    "about.support_bundle.sub": "在本地创建近期 OnionHEN 日志包",
+    "about.support_bundle.notice": "在 /data/OnionHEN/support/ 创建文件，包含每个可用主日志、工具日志和崩溃日志末尾的 128 KiB。日志可能包含标题 ID、网络地址和文件路径；分享前请检查。不包含配置、作弊文件或用户载荷，也不会上传任何内容。",
+    "about.support_bundle.create": "创建支持包"
   },
   "notifications": {
     "notify.pkg.path_invalid": "Enter an absolute /data/... or /mnt/... folder path without . or .. components.",
@@ -488,6 +492,8 @@
     "notify.account.already": "此账号已激活",
     "notify.account.failed": "账号激活失败",
     "notify.account.invalid": "无法读取当前用户账号",
-    "notify.brand": "OnionHEN"
+    "notify.brand": "OnionHEN",
+    "notify.support_bundle.saved_fmt": "支持包已保存：%s",
+    "notify.support_bundle.failed": "无法创建支持包；请检查存储空间和权限。"
   }
 }

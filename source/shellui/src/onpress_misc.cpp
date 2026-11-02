@@ -2,6 +2,7 @@
 #include "onpress.hpp"
 #include "account_activator.h"
 #include "progress_dialog.hpp"
+#include "support_bundle.hpp"
 #include "onion_cjson.hpp"
 
 #include <cstring>
@@ -95,6 +96,17 @@ static OnPressResult id_presentation_card(OnPressContext &ctx) {
   return OnPressResult::Consumed;
 }
 
+static OnPressResult id_support_bundle_create(OnPressContext &ctx) {
+  ctx.dirty = false;
+  std::string path;
+  if (!create_support_bundle(path)) {
+    notify("notify.support_bundle.failed");
+    return OnPressResult::Consumed;
+  }
+  notify("notify.support_bundle.saved_fmt", path.c_str());
+  return OnPressResult::Consumed;
+}
+
 static const OnPressExactEntry kRootExact[] = {
     {"id_download_cheats", id_download_cheats},
     {"id_lm_test", id_lm_test},
@@ -103,6 +115,7 @@ static const OnPressExactEntry kRootExact[] = {
     {"id_donator_aglx", id_presentation_card},
     {"id_donator_ljf", id_presentation_card},
     {"id_donator_szx", id_presentation_card},
+    {"id_support_bundle_create", id_support_bundle_create},
 };
 
 const OnPressExactEntry *onpress_misc_root_exact(size_t *count) {

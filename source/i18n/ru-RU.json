@@ -329,7 +329,11 @@
     "plugins.external.progress_stopping": "Остановка плагина...",
     "plugins.external.progress_stopping_sub": "Пожалуйста, подождите, пока плагин завершает работу",
     "plugins.external.progress_completed": "Завершено",
-    "plugins.external.progress_failed": "Сбой операции"
+    "plugins.external.progress_failed": "Сбой операции",
+    "about.support_bundle": "Пакет диагностики",
+    "about.support_bundle.sub": "Создать локальный пакет последних журналов OnionHEN",
+    "about.support_bundle.notice": "Создаёт файл в /data/OnionHEN/support/ с последними 128 КиБ каждого доступного основного, служебного журнала и журнала сбоев. Журналы могут содержать идентификаторы игр, сетевые адреса и пути файлов; проверьте их перед отправкой. Настройки, читы и пользовательские payload-файлы не включаются. Загрузка не выполняется.",
+    "about.support_bundle.create": "Создать пакет диагностики"
   },
   "notifications": {
     "notify.pkg.path_invalid": "Enter an absolute /data/... or /mnt/... folder path without . or .. components.",
@@ -488,6 +492,8 @@
     "notify.account.already": "Эта учётная запись уже активирована",
     "notify.account.failed": "Не удалось активировать учётную запись",
     "notify.account.invalid": "Не удалось прочитать учётную запись текущего пользователя",
-    "notify.brand": "OnionHEN"
+    "notify.brand": "OnionHEN",
+    "notify.support_bundle.saved_fmt": "Пакет диагностики сохранён: %s",
+    "notify.support_bundle.failed": "Не удалось создать пакет; проверьте свободное место и права доступа."
   }
 }

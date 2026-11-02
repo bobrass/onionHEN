@@ -329,7 +329,11 @@
     "plugins.external.progress_stopping": "Zatrzymywanie wtyczki...",
     "plugins.external.progress_stopping_sub": "Proszę czekać, trwa zamykanie wtyczki",
     "plugins.external.progress_completed": "Ukończono",
-    "plugins.external.progress_failed": "Operacja nie powiodła się"
+    "plugins.external.progress_failed": "Operacja nie powiodła się",
+    "about.support_bundle": "Pakiet diagnostyczny",
+    "about.support_bundle.sub": "Utwórz lokalny pakiet z ostatnimi logami OnionHEN",
+    "about.support_bundle.notice": "Tworzy plik w /data/OnionHEN/support/ z ostatnimi 128 KiB każdego dostępnego logu głównego, narzędziowego i awarii. Logi mogą zawierać identyfikatory tytułów, adresy sieciowe i ścieżki plików; sprawdź je przed udostępnieniem. Ustawienia, kody i payloady użytkownika nie są dołączane. Nic nie jest wysyłane.",
+    "about.support_bundle.create": "Utwórz pakiet diagnostyczny"
   },
   "notifications": {
     "notify.pkg.path_invalid": "Enter an absolute /data/... or /mnt/... folder path without . or .. components.",
@@ -488,6 +492,8 @@
     "notify.account.already": "To konto jest już aktywowane",
     "notify.account.failed": "Nie udało się aktywować konta",
     "notify.account.invalid": "Nie udało się odczytać konta bieżącego użytkownika",
-    "notify.brand": "OnionHEN"
+    "notify.brand": "OnionHEN",
+    "notify.support_bundle.saved_fmt": "Zapisano pakiet diagnostyczny: %s",
+    "notify.support_bundle.failed": "Nie można utworzyć pakietu; sprawdź miejsce na dysku i uprawnienia."
   }
 }

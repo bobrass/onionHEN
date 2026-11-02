@@ -317,6 +317,7 @@ installer. Firmware-specific package support still needs console validation.
 | `/data/OnionHEN/OnionHEN.log` | Main runtime log |
 | `/data/OnionHEN/OnionHEN_crash.log` | Preserved daemon signal and backtrace log |
 | `/data/OnionHEN/OnionHEN_util_daemon.log` | Utility daemon log |
+| `/data/OnionHEN/support/` | Locally created support bundles from the About page; each contains up to the last 128 KiB of available OnionHEN logs and may include title IDs, network addresses, or file paths. Inspect before sharing. |
 
 <br>
 

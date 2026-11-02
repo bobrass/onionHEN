@@ -329,7 +329,11 @@
     "plugins.external.progress_stopping": "Plugin wird gestoppt...",
     "plugins.external.progress_stopping_sub": "Bitte warten, während das Plugin beendet wird",
     "plugins.external.progress_completed": "Abgeschlossen",
-    "plugins.external.progress_failed": "Vorgang fehlgeschlagen"
+    "plugins.external.progress_failed": "Vorgang fehlgeschlagen",
+    "about.support_bundle": "Supportpaket",
+    "about.support_bundle.sub": "Ein lokales Paket mit aktuellen OnionHEN-Protokollen erstellen",
+    "about.support_bundle.notice": "Erstellt eine Datei in /data/OnionHEN/support/ mit den letzten 128 KiB jedes verfügbaren Haupt-, Dienst- und Absturzprotokolls. Protokolle können Titel-IDs, Netzwerkadressen und Dateipfade enthalten; vor dem Teilen prüfen. Keine Einstellungen, Cheats oder Benutzer-Payloads werden aufgenommen. Es wird nichts hochgeladen.",
+    "about.support_bundle.create": "Supportpaket erstellen"
   },
   "notifications": {
     "notify.pkg.path_invalid": "Enter an absolute /data/... or /mnt/... folder path without . or .. components.",
@@ -488,6 +492,8 @@
     "notify.account.already": "Dieses Konto ist bereits aktiviert",
     "notify.account.failed": "Kontoaktivierung fehlgeschlagen",
     "notify.account.invalid": "Aktuelles Benutzerkonto konnte nicht gelesen werden",
-    "notify.brand": "OnionHEN"
+    "notify.brand": "OnionHEN",
+    "notify.support_bundle.saved_fmt": "Supportpaket gespeichert: %s",
+    "notify.support_bundle.failed": "Supportpaket konnte nicht erstellt werden; Speicherplatz und Berechtigungen prüfen."
   }
 }
