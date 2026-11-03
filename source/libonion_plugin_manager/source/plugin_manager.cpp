@@ -28,15 +28,20 @@ std::string auto_start_marker_path(std::string_view plugin_path) {
 bool auto_start_enabled(std::string_view plugin_path) {
   const std::string marker = auto_start_marker_path(plugin_path);
   struct stat entry {};
-  return stat(marker.c_str(), &entry) == 0;
+  return lstat(marker.c_str(), &entry) == 0 && S_ISREG(entry.st_mode);
 }
 
 bool write_auto_start_marker(std::string_view plugin_path, bool enabled) {
   const std::string marker = auto_start_marker_path(plugin_path);
   if (!enabled)
     return unlink(marker.c_str()) == 0 || errno == ENOENT;
+#ifdef O_NOFOLLOW
   const int descriptor =
-      open(marker.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+      open(marker.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0666);
+#else
+  errno = ENOTSUP;
+  return false;
+#endif
   if (descriptor < 0) return false;
   return close(descriptor) == 0;
 }
