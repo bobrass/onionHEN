@@ -73,8 +73,12 @@ bool touch_file(const char *path) {
   }
   int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0777);
   if (fd >= 0) {
-    close(fd);
-    return true;
+    if (close(fd) == 0)
+      return true;
+    const int saved_errno = errno;
+    LOG_ERROR("touch_file: close %s failed (%s)", path,
+              strerror(saved_errno));
+    errno = saved_errno;
   }
   return false;
 }
