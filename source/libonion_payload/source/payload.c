@@ -181,14 +181,32 @@ uint8_t *onion_payload_read_file(const char *path, size_t *out_size) {
     return NULL;
   }
 
-  if (read(fd, buf, (size_t)st.st_size) != st.st_size) {
-    LOG_ERROR("Failed to read payload file %s", path);
+  const size_t file_size = (size_t)st.st_size;
+  size_t offset = 0;
+  while (offset < file_size) {
+    const ssize_t bytes = read(fd, buf + offset, file_size - offset);
+    if (bytes < 0 && errno == EINTR)
+      continue;
+    if (bytes <= 0) {
+      const int saved_errno = bytes < 0 ? errno : EIO;
+      LOG_ERROR("Failed to read payload file %s (%s)", path,
+                strerror(saved_errno));
+      free(buf);
+      close(fd);
+      errno = saved_errno;
+      return NULL;
+    }
+    offset += (size_t)bytes;
+  }
+  if (close(fd) != 0) {
+    const int saved_errno = errno;
+    LOG_ERROR("Failed to close payload file %s (%s)", path,
+              strerror(saved_errno));
     free(buf);
-    close(fd);
+    errno = saved_errno;
     return NULL;
   }
-  close(fd);
-  *out_size = (size_t)st.st_size;
+  *out_size = file_size;
   return buf;
 }
 
