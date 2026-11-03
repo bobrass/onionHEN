@@ -2,6 +2,7 @@
 #include "plugin_directory_watcher.hpp"
 
 #include <elfldr_remote.h>
+#include <onion/fs.h>
 #include <onion/log.h>
 #include <onion/plugin_manager.hpp>
 #include <onion/proc_query.h>
@@ -73,17 +74,20 @@ public:
     const std::string path = pid_path(plugin_id);
     if (path.empty()) return;
     if (pid <= 1) {
-      unlink(path.c_str());
+      if (unlink(path.c_str()) != 0 && errno != ENOENT)
+        LOG_WARN("[plugins] failed to clear runtime PID marker %s: %s",
+                 path.c_str(), std::strerror(errno));
       return;
     }
     mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
     mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
-    const int descriptor = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (descriptor < 0) return;
     char value[32]{};
     const int length = std::snprintf(value, sizeof(value), "%d\n", pid);
-    if (length > 0) (void)write(descriptor, value, static_cast<size_t>(length));
-    close(descriptor);
+    if (length <= 0 || static_cast<size_t>(length) >= sizeof(value) ||
+        !write_file_atomic_with_mode(path.c_str(), value,
+                                     static_cast<size_t>(length), 0666))
+      LOG_WARN("[plugins] failed to persist runtime PID marker %s",
+               path.c_str());
   }
 
   void stop(pid_t pid, uint32_t flags) override {
