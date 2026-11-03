@@ -251,16 +251,16 @@ int get_game_pid() {
   return app_pid;
 }
 
-void ForceKillProc(int pid) {
+bool ForceKillProc(int pid) {
   /* PID 0/1 are kernel/init-class; never target them (payload path once
    * stored pid=1 as "unknown" and ShellUI hung on TerminateProcess(1)). */
   if (pid <= 1) {
     LOG_ERROR("ForceKillProc: refusing invalid/system pid=%d", pid);
-    return;
+    return false;
   }
   if (pid == getpid()) {
     LOG_WARN("ForceKillProc: refusing self pid=%d", pid);
-    return;
+    return false;
   }
 
   #define DECID_AUTH_ID 0x4800000000000022 // required for killing with sceKernelTerminateProcess / sys_proc_term  syscall
@@ -268,6 +268,7 @@ void ForceKillProc(int pid) {
 
   LOG_INFO("Terminating pid=%d", pid);
   int ret = 0;
+  bool terminated = false;
   if (sceKernelTerminateProcess(pid, &ret) != 0) {
     LOG_ERROR("sceKernelTerminateProcess(%d) failed ret=%d — SIGKILL fallback",
                  pid, ret);
@@ -275,12 +276,15 @@ void ForceKillProc(int pid) {
       LOG_ERROR("kill(%d, SIGKILL) failed: %s", pid, strerror(errno));
     } else {
       LOG_INFO("SIGKILL sent to pid=%d", pid);
+      terminated = true;
     }
   } else {
     LOG_INFO("Successfully terminated process with PID: %d", pid);
+    terminated = true;
   }
 
   set_proc_authid(getpid(), authid); // Restore original authid
+  return terminated;
 }
 
 static void shutdown_owned_process(const char *label, pid_t pid) {

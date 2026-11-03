@@ -43,7 +43,7 @@ int change_permissions_recursive(const char *path);
 bool test_sb_file(const char *filename);
 int get_shellui_pid();
 int get_game_pid();
-void ForceKillProc(int pid);
+bool ForceKillProc(int pid);
 bool set_fan_threshold(int temp);
 /** Write the stock 77 C threshold used when manual control is turned off. */
 bool restore_automatic_fan();

@@ -462,8 +462,11 @@ void handleIPC(clientArgs *client, std::string &inputStr,
       break;
     }
 
-    ForceKillProc(pid);
-    reply(sender_app, false);
+    if (ForceKillProc(pid)) {
+      reply(sender_app, false);
+    } else {
+      reply(sender_app, true);
+    }
     break;
   }
   case BREW_RELOAD_SETTINGS: {
