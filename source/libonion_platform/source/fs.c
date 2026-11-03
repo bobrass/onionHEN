@@ -125,26 +125,85 @@ bool mkdir_tree(const char *path) {
   return mkdir(current, 0777) == 0 || errno == EEXIST;
 }
 
-static size_t count_tree_entries(const char *path) {
+static bool count_tree_entries(const char *path, size_t *out_count) {
+  if (!path || !out_count) {
+    errno = EINVAL;
+    return false;
+  }
+
   DIR *dir = opendir(path);
   size_t count = 1; /* The directory itself. */
   struct dirent *entry;
+  bool success = true;
 
   if (dir == NULL) {
-    return count;
+    LOG_ERROR("Error opening directory %s while counting: %s", path,
+              strerror(errno));
+    return false;
   }
-  while ((entry = readdir(dir)) != NULL) {
+
+  for (;;) {
+    errno = 0;
+    entry = readdir(dir);
+    if (entry == NULL) {
+      if (errno != 0) {
+        LOG_ERROR("Error reading directory %s while counting: %s", path,
+                  strerror(errno));
+        success = false;
+      }
+      break;
+    }
+
     char child[1024];
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
       continue;
     }
-    snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
-    count += is_directory_entry(child, entry->d_type)
-                 ? count_tree_entries(child)
-                 : 1;
+
+    const int child_length =
+        snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+    if (child_length < 0 || (size_t)child_length >= sizeof(child)) {
+      LOG_ERROR("Path too long while counting %s/%s", path, entry->d_name);
+      success = false;
+      continue;
+    }
+
+    bool is_directory = entry->d_type == DT_DIR;
+    if (entry->d_type == DT_UNKNOWN) {
+      struct stat st;
+      if (lstat(child, &st) != 0) {
+        LOG_ERROR("Error inspecting %s while counting: %s", child,
+                  strerror(errno));
+        success = false;
+        continue;
+      }
+      is_directory = S_ISDIR(st.st_mode);
+    }
+
+    size_t child_count = 1;
+    if (is_directory && !count_tree_entries(child, &child_count)) {
+      success = false;
+      continue;
+    }
+    if (child_count > SIZE_MAX - count) {
+      LOG_ERROR("Entry count overflow while counting %s", path);
+      errno = EOVERFLOW;
+      success = false;
+      continue;
+    }
+    count += child_count;
   }
-  closedir(dir);
-  return count;
+
+  if (closedir(dir) != 0) {
+    LOG_ERROR("Error closing directory %s while counting: %s", path,
+              strerror(errno));
+    success = false;
+  }
+  if (!success) {
+    return false;
+  }
+
+  *out_count = count;
+  return true;
 }
 
 static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
@@ -233,7 +292,9 @@ bool rmtree_with_progress(const char *path, onion_fs_progress_fn progress,
   if (path == NULL) {
     return false;
   }
-  total = count_tree_entries(path);
+  if (!count_tree_entries(path, &total)) {
+    return false;
+  }
   if (progress != NULL) {
     progress(0, total, user);
   }
