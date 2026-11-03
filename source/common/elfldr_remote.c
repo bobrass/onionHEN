@@ -168,7 +168,7 @@ bool elfldr_remote_send_bytes_to(uint16_t port, const uint8_t *elf,
 }
 
 static bool uri_encode_component(const char *input, char *out,
-                                 size_t out_size) {
+                                 size_t out_size, bool allow_slash) {
   static const char hex[] = "0123456789ABCDEF";
   size_t used = 0;
   if (!out || out_size == 0)
@@ -180,7 +180,7 @@ static bool uri_encode_component(const char *input, char *out,
     const bool safe = (*p >= 'a' && *p <= 'z') ||
                       (*p >= 'A' && *p <= 'Z') ||
                       (*p >= '0' && *p <= '9') || *p == '-' || *p == '_' ||
-                      *p == '.' || *p == '~';
+                      *p == '.' || *p == '~' || (allow_slash && *p == '/');
     const size_t needed = safe ? 1u : 3u;
     if (used + needed >= out_size)
       return false;
@@ -202,15 +202,19 @@ static int send_file_uri(uint16_t port, const char *abs_path,
     return -1;
 
   /* socksrv: magic starts with "file" (0x656C6966 LE) then path until \n */
+  char encoded_path[1024];
   char encoded_args[768];
-  if (!uri_encode_component(args, encoded_args, sizeof(encoded_args)))
+  if (!uri_encode_component(abs_path, encoded_path, sizeof(encoded_path),
+                            /*allow_slash=*/true) ||
+      !uri_encode_component(args, encoded_args, sizeof(encoded_args),
+                            /*allow_slash=*/false))
     return -1;
 
-  char line[1280];
+  char line[1024];
   int n = args && args[0]
-              ? snprintf(line, sizeof(line), "file:%s?args=%s\n", abs_path,
+              ? snprintf(line, sizeof(line), "file:%s?args=%s\n", encoded_path,
                          encoded_args)
-              : snprintf(line, sizeof(line), "file:%s\n", abs_path);
+              : snprintf(line, sizeof(line), "file:%s\n", encoded_path);
   if (n <= 0 || (size_t)n >= sizeof(line))
     return -1;
 
