@@ -271,7 +271,7 @@ PkgInstallerResult install_scanned_pkg(std::size_t index,
   if (!has_pkg_suffix(entry.name) || !pkg_search_path_is_valid(entry.search_path))
     return {false, -EINVAL};
   struct stat st {};
-  if (::stat(entry.shellui_path.c_str(), &st) != 0)
+  if (stat_retry(entry.shellui_path.c_str(), &st) != 0)
     return {false, -errno};
   if (!S_ISREG(st.st_mode))
     return {false, -EINVAL};
