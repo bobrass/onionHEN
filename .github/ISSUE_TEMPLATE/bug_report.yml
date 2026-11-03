@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Firmware, loader, and other running payloads matter more than a long write-up.
+        PS5 model, firmware, exact OnionHEN build, loader, and other running payloads help reproduce issues.
         For a kernel panic or ShellUI crash/restart, load [klogsrv](https://github.com/ps5-payload-dev/klogsrv) before reproducing. From a PC on the same network, run `nc <PS5-IP> 3232 > klog.txt`, reproduce the problem, then stop capture with Ctrl+C. Windows users can run [`scripts/capture_klog.py`](https://github.com/aydencharles/onionHEN/blob/main/scripts/capture_klog.py) with `python scripts/capture_klog.py <PS5-IP> --output klog.txt` instead. `OnionHEN_crash.log` may be empty for these system crashes.
 
   - type: input
@@ -16,6 +16,23 @@ body:
       placeholder: "v0.0.9"
     validations:
       required: true
+
+  - type: input
+    id: build_revision
+    attributes:
+      label: Build source or commit
+      description: For a self-built ELF, include its source commit (`git rev-parse HEAD`). For a release build, give the release tag if known.
+      placeholder: "v0.9.0 release, or commit SHA"
+    validations:
+      required: false
+
+  - type: input
+    id: console_model
+    attributes:
+      label: PS5 model
+      placeholder: "Base, Slim, or Pro; CFI model if known"
+    validations:
+      required: false
 
   - type: input
     id: firmware
@@ -96,7 +113,7 @@ body:
     id: payload_timing
     attributes:
       label: Payload load order and timing
-      description: List other payloads/plugins in the order they start, the delay before OnionHEN is loaded, and whether external USB storage is connected.
+      description: List payloads/plugins in startup order with versions, the exploit host and version, the delay before OnionHEN loads, and whether external USB storage is connected.
     validations:
       required: false
 
