@@ -153,6 +153,10 @@ int IPC_Client::recv_frame_unlocked(IPCMessage &msg) {
   tv.tv_sec = recv_timeout_ms / 1000;
   tv.tv_usec = (recv_timeout_ms % 1000) * 1000;
   if (setsockopt(socket_fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+    const int error = errno;
+    LOG_ERROR("Failed to set IPC receive timeout: %s", strerror(error));
+    IPCCloseConnection();
+    errno = error;
     return -1;
   }
 
@@ -161,11 +165,16 @@ int IPC_Client::recv_frame_unlocked(IPCMessage &msg) {
   const int ret = onion::ipc_network_recv_full(
       socket_fd_, &msg, static_cast<int32_t>(sizeof(msg)));
   if (ret < 0) {
-    LOG_ERROR("recv failed: %s", strerror(errno));
+    const int error = errno;
+    LOG_ERROR("recv failed: %s", strerror(error));
+    IPCCloseConnection();
+    errno = error;
     return ret;
   }
   if (!onion::ipc_frame_is_complete(ret)) {
     LOG_DEBUG("short IPC frame %d (want %zu)", ret, sizeof(msg));
+    IPCCloseConnection();
+    errno = ECONNRESET;
     return -1;
   }
   onion::ipc_message_force_nul(msg);
