@@ -13,6 +13,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <limits>
+#include <map>
 #include <signal.h>
 #include <string>
 #include <sys/stat.h>
@@ -30,6 +31,12 @@ std::string pid_path(std::string_view plugin_id) {
   const std::string key = pid_key(plugin_id);
   if (!onion_system_tmp_pid_path(path, sizeof(path), key.c_str())) return {};
   return path;
+}
+
+bool process_matches_generation(pid_t pid, uint64_t expected_generation) {
+  uint64_t current_generation = 0;
+  return onion_proc_get_generation(pid, &current_generation) == 0 &&
+         current_generation == expected_generation;
 }
 
 bool write_pid_marker_atomically(const std::string &path, const char *value,
@@ -130,6 +137,7 @@ public:
       unlink(path.c_str());
       return -1;
     }
+    tracked_processes_[pid] = {std::string(plugin_id), current_generation};
     return pid;
   }
 
@@ -157,6 +165,13 @@ public:
     if (path.empty()) return;
     if (pid <= 1) {
       unlink(path.c_str());
+      for (auto current = tracked_processes_.begin();
+           current != tracked_processes_.end();) {
+        if (current->second.plugin_id == plugin_id)
+          current = tracked_processes_.erase(current);
+        else
+          ++current;
+      }
       return;
     }
     uint64_t generation = 0;
@@ -164,6 +179,7 @@ public:
       unlink(path.c_str());
       return;
     }
+    tracked_processes_[pid] = {std::string(plugin_id), generation};
     mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
     mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
     char value[64]{};
@@ -183,13 +199,32 @@ public:
 
   void stop(pid_t pid, uint32_t flags) override {
     if (pid <= 1 || pid == getpid()) return;
+    const auto tracked = tracked_processes_.find(pid);
+    if (tracked == tracked_processes_.end() ||
+        !process_matches_generation(pid, tracked->second.generation)) {
+      LOG_WARN("[plugins] refusing to signal unverified process pid=%d",
+               static_cast<int>(pid));
+      if (tracked != tracked_processes_.end()) tracked_processes_.erase(tracked);
+      return;
+    }
+    const uint64_t expected_generation = tracked->second.generation;
     if (flags & plugin::kFlagStopSupported) {
-      (void)kill(pid, SIGTERM);
+      if (process_matches_generation(pid, expected_generation))
+        (void)kill(pid, SIGTERM);
       for (int attempt = 0; attempt < 10 && onion_proc_is_alive(pid); ++attempt)
         usleep(50 * 1000);
     }
-    if (onion_proc_is_alive(pid)) (void)kill(pid, SIGKILL);
+    if (process_matches_generation(pid, expected_generation))
+      (void)kill(pid, SIGKILL);
+    tracked_processes_.erase(pid);
   }
+
+private:
+  struct TrackedProcess {
+    std::string plugin_id;
+    uint64_t generation = 0;
+  };
+  std::map<pid_t, TrackedProcess> tracked_processes_;
 };
 
 plugin::Manager &manager() {
