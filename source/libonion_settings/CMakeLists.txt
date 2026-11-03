@@ -26,3 +26,5 @@ target_include_directories(${PROJECT_NAME}
   PRIVATE "${D_CWD}/../include"
 )
 
+target_link_libraries(${PROJECT_NAME} PUBLIC onion_platform)
+

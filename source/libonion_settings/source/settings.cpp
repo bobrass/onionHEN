@@ -15,18 +15,17 @@ along with this program; see the file COPYING. If not, see
 <http://www.gnu.org/licenses/>.  */
 
 #include <onion/settings.hpp>
+#include <onion/fs.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
-#include <fcntl.h>
 #include <memory>
 #include <new>
 #include <string>
 #include <sys/stat.h>
-#include <unistd.h>
 
 // Header-only inih-style parser already used across the tree.
 #include <ini.h>
@@ -39,12 +38,6 @@ const char *g_last_loaded = "";
 bool path_exists(const char *path) {
   struct stat st {};
   return path && stat(path, &st) == 0 && S_ISREG(st.st_mode);
-}
-
-bool dir_writable_parent(const char *path) {
-  // Best-effort: try open with create; callers still check write result.
-  (void)path;
-  return true;
 }
 
 int atoi_def(const char *s, int def) {
@@ -770,16 +763,7 @@ bool apply_parser(IniParser *parser, Settings *out) {
 }
 
 bool write_path(const char *path, const std::string &body) {
-  if (!path || !dir_writable_parent(path)) {
-    return false;
-  }
-  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0777);
-  if (fd < 0) {
-    return false;
-  }
-  ssize_t n = write(fd, body.data(), body.size());
-  close(fd);
-  return n == static_cast<ssize_t>(body.size());
+  return write_file_atomic(path, body.data(), body.size());
 }
 
 bool try_load_path(const char *path, Settings *out) {
