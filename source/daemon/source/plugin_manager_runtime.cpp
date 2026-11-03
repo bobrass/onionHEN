@@ -39,9 +39,25 @@ public:
     const int descriptor = open(path.c_str(), O_RDONLY);
     if (descriptor < 0) return -1;
     char value[64]{};
-    const ssize_t count = read(descriptor, value, sizeof(value) - 1);
-    close(descriptor);
-    if (count <= 0) return -1;
+    size_t used = 0;
+    bool read_ok = true;
+    while (used < sizeof(value) - 1) {
+      const ssize_t count = read(descriptor, value + used,
+                                 sizeof(value) - 1 - used);
+      if (count < 0 && errno == EINTR) continue;
+      if (count < 0) {
+        read_ok = false;
+        break;
+      }
+      if (count == 0) break;
+      used += static_cast<size_t>(count);
+    }
+    const bool close_ok = close(descriptor) == 0;
+    if (!read_ok || !close_ok || used == 0 || used == sizeof(value) - 1) {
+      if (read_ok && close_ok && used != 0) unlink(path.c_str());
+      return -1;
+    }
+    value[used] = '\0';
 
     char *pid_end = nullptr;
     errno = 0;
@@ -61,10 +77,8 @@ public:
     errno = 0;
     const unsigned long long stored_generation =
         std::strtoull(generation_start, &generation_end, 10);
-    while (generation_end &&
-           (*generation_end == ' ' || *generation_end == '\t' ||
-            *generation_end == '\r' || *generation_end == '\n'))
-      ++generation_end;
+    if (generation_end && *generation_end == '\r') ++generation_end;
+    if (generation_end && *generation_end == '\n') ++generation_end;
     if (*generation_start < '0' || *generation_start > '9' || errno != 0 ||
         generation_end == generation_start ||
         !generation_end || *generation_end != '\0' ||
