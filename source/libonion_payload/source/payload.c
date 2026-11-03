@@ -7,6 +7,7 @@
 #include <onion/elf_name.h>
 
 #include <elfldr_remote.h>
+#include <onion/fs.h>
 #include <onion/log.h>
 #include <onion/notify.h>
 #include <onion/proc_query.h>
@@ -80,13 +81,12 @@ void onion_payload_write_pid_file(const char *pid_path, pid_t pid) {
 
   mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
   mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
-  const int f = open(pid_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-  if (f < 0)
-    return;
   char t[32];
   const int len = snprintf(t, sizeof(t), "%d", pid);
-  (void)write(f, t, (size_t)len);
-  close(f);
+  if (len <= 0 || (size_t)len >= sizeof(t) ||
+      !write_file_atomic(pid_path, t, (size_t)len)) {
+    LOG_WARN("Failed to persist payload PID marker: %s", pid_path);
+  }
 }
 
 bool onion_payload_running(const char *title_id) {
