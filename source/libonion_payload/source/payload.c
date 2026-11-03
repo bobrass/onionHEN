@@ -5,6 +5,7 @@
 
 #include <onion/payload.h>
 #include <onion/elf_name.h>
+#include <onion/fs.h>
 
 #include <elfldr_remote.h>
 #include <onion/log.h>
@@ -15,6 +16,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,20 +59,47 @@ void onion_payload_pid_path(char *out, size_t out_sz, const char *title_id) {
 }
 
 pid_t onion_payload_read_pid_file(const char *pid_path) {
+  if (!pid_path || !pid_path[0])
+    return -1;
   const int f = open(pid_path, O_RDONLY);
   if (f < 0)
     return -1;
   char t[32];
-  const int r = (int)read(f, t, sizeof(t) - 1);
-  close(f);
-  if (r <= 0)
+  size_t used = 0;
+  while (used < sizeof(t) - 1) {
+    const ssize_t bytes = read(f, t + used, sizeof(t) - 1 - used);
+    if (bytes < 0 && errno == EINTR)
+      continue;
+    if (bytes < 0) {
+      const int saved_errno = errno;
+      close(f);
+      errno = saved_errno;
+      return -1;
+    }
+    if (bytes == 0)
+      break;
+    used += (size_t)bytes;
+  }
+  if (close(f) != 0)
     return -1;
-  t[r] = '\0';
-  return (pid_t)atoi(t);
+  if (used == 0 || used == sizeof(t) - 1)
+    return -1;
+
+  long value = 0;
+  for (size_t i = 0; i < used; ++i) {
+    if (t[i] < '0' || t[i] > '9')
+      return -1;
+    const int digit = t[i] - '0';
+    if (value > (LONG_MAX - digit) / 10)
+      return -1;
+    value = value * 10 + digit;
+  }
+  const pid_t pid = (pid_t)value;
+  return pid >= 1 && (long)pid == value ? pid : -1;
 }
 
 void onion_payload_write_pid_file(const char *pid_path, pid_t pid) {
-  if (!pid_path) {
+  if (!pid_path || !pid_path[0]) {
     return;
   }
   if (pid <= 1) {
@@ -78,15 +107,21 @@ void onion_payload_write_pid_file(const char *pid_path, pid_t pid) {
     return;
   }
 
-  mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
-  mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
-  const int f = open(pid_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-  if (f < 0)
+  if ((mkdir(ONION_SYSTEM_TMP_ROOT, 0777) != 0 && errno != EEXIST) ||
+      (mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777) != 0 && errno != EEXIST)) {
+    LOG_ERROR("Failed to create payload PID directory for %s (%s)", pid_path,
+              strerror(errno));
     return;
+  }
   char t[32];
   const int len = snprintf(t, sizeof(t), "%d", pid);
-  (void)write(f, t, (size_t)len);
-  close(f);
+  if (len <= 0 || (size_t)len >= sizeof(t)) {
+    LOG_ERROR("Failed to format payload PID for %s", pid_path);
+    return;
+  }
+  if (!write_file_atomic(pid_path, t, (size_t)len))
+    LOG_ERROR("Failed to persist payload PID for %s (%s)", pid_path,
+              strerror(errno));
 }
 
 bool onion_payload_running(const char *title_id) {
@@ -98,8 +133,8 @@ bool onion_payload_running(const char *title_id) {
   if (pid <= 1) {
     if (pid == 1) {
       LOG_WARN("Ignoring bogus payload PID 1 for %s", title_id);
-      unlink(path);
     }
+    unlink(path);
     return false;
   }
   if (!onion_proc_is_alive(pid)) {
