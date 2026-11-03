@@ -63,14 +63,18 @@ int change_permissions_recursive(const char* path) {
     struct dirent* entry;
     DIR* dir;
     int result = 0;
+    int first_error = 0;
 
     if (!path || strlen(path) == 0) {
         LOG_ERROR( "Invalid path provided");
+        errno = EINVAL;
         return -1;
     }
 
     if (lstat(path, &statbuf) != 0) {
+        int error = errno;
         LOG_ERROR( "Failed to stat '%s': %s", path, strerror(errno));
+        errno = error;
         return -1;
     }
 
@@ -87,7 +91,9 @@ int change_permissions_recursive(const char* path) {
 
     if (!S_ISDIR(statbuf.st_mode)) {
         if (chmod(path, 0777) != 0) {
+            int error = errno;
             LOG_ERROR( "Failed to chmod '%s': %s", path, strerror(errno));
+            errno = error;
             return -1;
         }
         return 0;
@@ -95,7 +101,9 @@ int change_permissions_recursive(const char* path) {
 
     dir = opendir(path);
     if (!dir) {
+        int error = errno;
         LOG_ERROR( "Failed to open directory '%s': %s", path, strerror(errno));
+        errno = error;
         return -1;
     }
 
@@ -106,9 +114,12 @@ int change_permissions_recursive(const char* path) {
             if (errno == EINTR)
                 continue;
             if (errno != 0) {
+                int error = errno;
                 LOG_ERROR("Error reading directory '%s': %s", path,
                           strerror(errno));
                 result = -1;
+                if (first_error == 0)
+                    first_error = error;
             }
             break;
         }
@@ -122,32 +133,47 @@ int change_permissions_recursive(const char* path) {
         if (path_len + name_len + 2 > PATH_MAX) {
             LOG_ERROR("Path too long: %s/%s", path, entry->d_name);
             result = -1;
+            if (first_error == 0)
+                first_error = ENAMETOOLONG;
             continue;
         }
 
         char newpath[PATH_MAX];
         int ret = snprintf(newpath, sizeof(newpath), "%s/%s", path, entry->d_name);
-        if (ret >= sizeof(newpath)) {
+        if (ret < 0 || static_cast<size_t>(ret) >= sizeof(newpath)) {
+            int error = ret < 0 ? (errno != 0 ? errno : EIO) : ENAMETOOLONG;
             LOG_ERROR("Path truncated: %s/%s", path, entry->d_name);
             result = -1;
+            if (first_error == 0)
+                first_error = error;
             continue;
         }
 
         if (change_permissions_recursive(newpath) != 0) {
             result = -1;
+            if (first_error == 0)
+                first_error = errno != 0 ? errno : EIO;
         }
     }
 
     if (closedir(dir) != 0) {
+        int error = errno;
         LOG_ERROR("Failed to close directory '%s': %s", path, strerror(errno));
         result = -1;
+        if (first_error == 0)
+            first_error = error;
     }
 
     if (chmod(path, 0777) != 0) {
+        int error = errno;
         LOG_ERROR( "Failed to chmod directory '%s': %s", path, strerror(errno));
-        return -1;
+        result = -1;
+        if (first_error == 0)
+            first_error = error;
     }
 
+    if (result != 0)
+        errno = first_error != 0 ? first_error : EIO;
     return result;
 }
 
