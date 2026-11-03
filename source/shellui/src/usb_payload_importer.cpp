@@ -49,12 +49,25 @@ std::vector<Entry> scan(const std::string &usb_prefix,
   for (unsigned index = 0; index < 8; ++index) {
     std::string mount = usb_prefix + std::to_string(index);
     DIR *dir = opendir(mount.c_str());
+    bool open_incomplete = false;
     if (!dir && usb_prefix == kUsbPrefix) {
+      const int primary_error = errno;
       mount = "/mnt/usb" + std::to_string(index);
       dir = opendir(mount.c_str());
+      if (primary_error != ENOENT && primary_error != ENODEV &&
+          primary_error != ENXIO) {
+        open_incomplete = true;
+      }
     }
-    if (!dir)
+    if (!dir) {
+      if (errno != ENOENT && errno != ENODEV && errno != ENXIO)
+        open_incomplete = true;
+      if (open_incomplete && scan_complete)
+        *scan_complete = false;
       continue;
+    }
+    if (open_incomplete && scan_complete)
+      *scan_complete = false;
     if (device_found)
       *device_found = true;
     for (;;) {
