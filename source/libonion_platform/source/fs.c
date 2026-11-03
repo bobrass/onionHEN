@@ -125,26 +125,67 @@ bool mkdir_tree(const char *path) {
   return mkdir(current, 0777) == 0 || errno == EEXIST;
 }
 
-static size_t count_tree_entries(const char *path) {
+static bool make_child_path(char *child, size_t child_size, const char *path,
+                            const char *name) {
+  const int written = snprintf(child, child_size, "%s/%s", path, name);
+  if (written < 0 || (size_t)written >= child_size) {
+    errno = ENAMETOOLONG;
+    LOG_ERROR("Path too long below directory %s", path);
+    return false;
+  }
+  return true;
+}
+
+static bool count_tree_entries(const char *path, size_t *out_count) {
   DIR *dir = opendir(path);
   size_t count = 1; /* The directory itself. */
-  struct dirent *entry;
-
   if (dir == NULL) {
-    return count;
+    LOG_ERROR("Error opening directory %s: %s", path, strerror(errno));
+    return false;
   }
-  while ((entry = readdir(dir)) != NULL) {
+
+  bool ok = true;
+  for (;;) {
+    errno = 0;
+    struct dirent *entry = readdir(dir);
+    if (entry == NULL) {
+      if (errno != 0) {
+        LOG_ERROR("Error reading directory %s: %s", path, strerror(errno));
+        ok = false;
+      }
+      break;
+    }
     char child[1024];
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
       continue;
     }
-    snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
-    count += is_directory_entry(child, entry->d_type)
-                 ? count_tree_entries(child)
-                 : 1;
+    if (!make_child_path(child, sizeof(child), path, entry->d_name)) {
+      ok = false;
+      break;
+    }
+
+    size_t child_count = 1;
+    if (is_directory_entry(child, entry->d_type) &&
+        !count_tree_entries(child, &child_count)) {
+      ok = false;
+      break;
+    }
+    if (child_count > SIZE_MAX - count) {
+      errno = EOVERFLOW;
+      LOG_ERROR("Directory entry count overflow under %s", path);
+      ok = false;
+      break;
+    }
+    count += child_count;
   }
-  closedir(dir);
-  return count;
+  if (closedir(dir) != 0) {
+    LOG_ERROR("Error closing directory %s: %s", path, strerror(errno));
+    ok = false;
+  }
+  if (ok) {
+    *out_count = count;
+  }
+  return ok;
 }
 
 static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
@@ -159,42 +200,59 @@ static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
     return false;
   }
 
-  struct dirent *entry;
-  while ((entry = readdir(dir)) != NULL) {
-    bool is_directory;
+  bool ok = true;
+  for (;;) {
+    errno = 0;
+    struct dirent *entry = readdir(dir);
+    if (entry == NULL) {
+      if (errno != 0) {
+        LOG_ERROR("Error reading directory %s: %s", path, strerror(errno));
+        ok = false;
+      }
+      break;
+    }
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
       continue;
     }
 
     char child[1024];
-    snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
-    is_directory = is_directory_entry(child, entry->d_type);
-
-    if (is_directory) {
-      (void)rmtree_impl(child, progress, user, completed, total);
-    } else if (unlink(child) != 0) {
-      LOG_ERROR("Error deleting file %s", child);
+    if (!make_child_path(child, sizeof(child), path, entry->d_name)) {
+      ok = false;
+      continue;
     }
-    if (!is_directory && completed != NULL) {
-      ++(*completed);
-      if (progress != NULL) {
-        progress(*completed, total, user);
+
+    if (is_directory_entry(child, entry->d_type)) {
+      if (!rmtree_impl(child, progress, user, completed, total)) {
+        ok = false;
+      }
+    } else if (unlink(child) != 0) {
+      LOG_ERROR("Error deleting file %s: %s", child, strerror(errno));
+      ok = false;
+    } else {
+      if (completed != NULL) {
+        ++(*completed);
+        if (progress != NULL) {
+          progress(*completed, total, user);
+        }
       }
     }
   }
 
-  closedir(dir);
+  if (closedir(dir) != 0) {
+    LOG_ERROR("Error closing directory %s: %s", path, strerror(errno));
+    ok = false;
+  }
 
   if (rmdir(path) != 0) {
-    LOG_ERROR("Error deleting folder %s", path);
-  }
-  if (completed != NULL) {
+    LOG_ERROR("Error deleting folder %s: %s", path, strerror(errno));
+    ok = false;
+  } else if (completed != NULL) {
     ++(*completed);
     if (progress != NULL) {
       progress(*completed, total, user);
     }
   }
-  return true;
+  return ok;
 }
 
 bool rmtree(const char *path) {
@@ -208,7 +266,9 @@ bool rmtree_with_progress(const char *path, onion_fs_progress_fn progress,
   if (path == NULL) {
     return false;
   }
-  total = count_tree_entries(path);
+  if (!count_tree_entries(path, &total)) {
+    return false;
+  }
   if (progress != NULL) {
     progress(0, total, user);
   }
