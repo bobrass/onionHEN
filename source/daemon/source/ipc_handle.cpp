@@ -473,16 +473,21 @@ void handleIPC(clientArgs *client, std::string &inputStr,
     break;
   }
   case BREW_CHMOD_DIR: {
-	LOG_DEBUG("BREW_CHMOD_DIR called");
+    LOG_DEBUG("BREW_CHMOD_DIR called");
     path = onion_cjson::string_item(my_json.get(), "path");
-    if(!path) {
+    if (!path || !*path) {
       LOG_ERROR("Invalid path for chmod");
       reply(sender_app, true);
       break;
-	}
-   // kernel_set_ucred_authid(getpid(), 0x4801000000000013L);
-	  change_permissions_recursive(path);
-	  reply(sender_app, false);
+    }
+    // kernel_set_ucred_authid(getpid(), 0x4801000000000013L);
+    if (change_permissions_recursive(path) != 0) {
+      LOG_ERROR("BREW_CHMOD_DIR: recursive permission change failed for %s",
+                path);
+      reply(sender_app, true);
+    } else {
+      reply(sender_app, false);
+    }
     break;
   }
   default:
