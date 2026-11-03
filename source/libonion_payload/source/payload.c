@@ -68,10 +68,27 @@ static int lock_payload_key(const char *key) {
   /* Keep the lock file: unlinking it can let a second opener lock a new inode
    * while this process still holds the old inode. flock releases on close or
    * process exit, so an interrupted launch cannot leave a stale lock. */
-  const int fd = open(lock_path, O_CREAT | O_RDWR, 0600);
+  const int fd = open(lock_path, O_CREAT | O_RDWR | O_NONBLOCK | O_NOFOLLOW,
+                      0600);
   if (fd < 0) {
     LOG_ERROR("Failed to open payload launch lock %s (%s)", lock_path,
               strerror(errno));
+    return -1;
+  }
+
+  struct stat st;
+  if (fstat(fd, &st) != 0) {
+    const int saved_errno = errno;
+    close(fd);
+    LOG_ERROR("Failed to stat payload launch lock %s (%s)", lock_path,
+              strerror(saved_errno));
+    errno = saved_errno;
+    return -1;
+  }
+  if (!S_ISREG(st.st_mode)) {
+    close(fd);
+    LOG_ERROR("Payload launch lock is not a regular file: %s", lock_path);
+    errno = EINVAL;
     return -1;
   }
 
