@@ -4,15 +4,17 @@
  */
 
 #include <onion/platform.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
-#include <string.h>
+#include <limits.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 uint64_t calculateTotalSize(const char *path) {
   long total = 0;
@@ -168,6 +170,16 @@ bool copyFile(const char *source, const char *destination) {
   return false;
 }
 
+static bool is_same_or_child_path(const char *parent, const char *candidate) {
+  const size_t parent_length = strlen(parent);
+  if (strncmp(parent, candidate, parent_length) != 0)
+    return false;
+  if (parent_length == 1 && parent[0] == '/')
+    return candidate[0] == '/';
+  return candidate[parent_length] == '\0' ||
+         candidate[parent_length] == '/';
+}
+
 bool copyRecursive(const char *source, const char *destination) {
   DIR *dir = opendir(source);
   if (dir == NULL) {
@@ -179,13 +191,41 @@ bool copyRecursive(const char *source, const char *destination) {
     return false;
   }
 
-  if (mkdir(destination, 0777) != 0 && errno != EEXIST) {
+  const bool destination_created = mkdir(destination, 0777) == 0;
+  if (!destination_created && errno != EEXIST) {
     const int mkdir_error = errno;
     closedir(dir);
     onion_notify(false, "notify.fs.copy_recursive", destination);
     LOG_ERROR("copyRecursive failed to create %s: %s", destination,
               strerror(mkdir_error));
     errno = mkdir_error;
+    return false;
+  }
+
+  char resolved_source[PATH_MAX];
+  char resolved_destination[PATH_MAX];
+  if (realpath(source, resolved_source) == NULL ||
+      realpath(destination, resolved_destination) == NULL) {
+    const int resolve_error = errno != 0 ? errno : EIO;
+    if (destination_created && rmdir(destination) != 0)
+      LOG_WARN("copyRecursive failed to remove destination %s: %s",
+               destination, strerror(errno));
+    closedir(dir);
+    onion_notify(false, "notify.fs.copy_recursive", destination);
+    LOG_ERROR("copyRecursive failed to resolve source/destination paths: %s",
+              strerror(resolve_error));
+    errno = resolve_error;
+    return false;
+  }
+  if (is_same_or_child_path(resolved_source, resolved_destination)) {
+    if (destination_created && rmdir(resolved_destination) != 0)
+      LOG_WARN("copyRecursive failed to remove recursive destination %s: %s",
+               resolved_destination, strerror(errno));
+    closedir(dir);
+    onion_notify(false, "notify.fs.copy_recursive", destination);
+    LOG_ERROR("copyRecursive destination cannot be inside its source: %s",
+              destination);
+    errno = EINVAL;
     return false;
   }
 
