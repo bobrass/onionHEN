@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <limits.h>
@@ -149,8 +150,11 @@ void calculateSize(uint64_t size, char *result) {
 bool copyFile(const char *source, const char *destination) {
   FILE *src = fopen(source, "rb");
   if (src == NULL) {
+    const int error = errno;
     onion_notify(false, "notify.fs.copy_file", source);
-    LOG_ERROR("copyFile failed for %s", source);
+    errno = error;
+    LOG_ERROR("copyFile failed to open %s: %s", source, strerror(errno));
+    errno = error;
     return false;
   }
 
@@ -158,41 +162,70 @@ bool copyFile(const char *source, const char *destination) {
   if (fstat(fileno(src), &source_stat) != 0) {
     const int error = errno;
     fclose(src);
-    errno = error;
     onion_notify(false, "notify.fs.copy_file", source);
+    errno = error;
     LOG_ERROR("copyFile failed to inspect %s: %s", source, strerror(errno));
+    errno = error;
+    return false;
+  }
+
+  const int destination_fd = open(destination, O_WRONLY | O_CREAT, 0666);
+  if (destination_fd < 0) {
+    const int error = errno;
+    fclose(src);
+    onion_notify(false, "notify.fs.copy_file", destination);
+    errno = error;
+    LOG_ERROR("copyFile failed to open %s: %s", destination,
+              strerror(errno));
+    errno = error;
     return false;
   }
 
   struct stat destination_stat;
-  const int destination_stat_result = stat(destination, &destination_stat);
-  if (destination_stat_result == 0 &&
-      source_stat.st_dev == destination_stat.st_dev &&
+  if (fstat(destination_fd, &destination_stat) != 0) {
+    const int error = errno;
+    close(destination_fd);
+    fclose(src);
+    onion_notify(false, "notify.fs.copy_file", destination);
+    errno = error;
+    LOG_ERROR("copyFile failed to inspect %s: %s", destination,
+              strerror(errno));
+    errno = error;
+    return false;
+  }
+  if (source_stat.st_dev == destination_stat.st_dev &&
       source_stat.st_ino == destination_stat.st_ino) {
+    close(destination_fd);
     fclose(src);
     errno = EINVAL;
     onion_notify(false, "notify.fs.copy_file", destination);
     LOG_ERROR("copyFile source and destination are the same file: %s",
               source);
+    errno = EINVAL;
     return false;
   }
-  if (destination_stat_result != 0 && errno != ENOENT) {
+  if (ftruncate(destination_fd, 0) != 0) {
     const int error = errno;
+    close(destination_fd);
     fclose(src);
-    errno = error;
     onion_notify(false, "notify.fs.copy_file", destination);
-    LOG_ERROR("copyFile failed to inspect %s: %s", destination,
+    errno = error;
+    LOG_ERROR("copyFile failed to truncate %s: %s", destination,
               strerror(errno));
+    errno = error;
     return false;
   }
 
-  FILE *dest = fopen(destination, "wb");
+  FILE *dest = fdopen(destination_fd, "wb");
   if (dest == NULL) {
     const int error = errno;
-    onion_notify(false, "notify.fs.copy_file", destination);
+    close(destination_fd);
     fclose(src);
+    onion_notify(false, "notify.fs.copy_file", destination);
     errno = error;
-    LOG_ERROR("copyFile failed for %s: %s", destination, strerror(errno));
+    LOG_ERROR("copyFile failed to open stream for %s: %s", destination,
+              strerror(errno));
+    errno = error;
     return false;
   }
 
