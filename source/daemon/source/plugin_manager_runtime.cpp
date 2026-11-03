@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <limits>
 #include <signal.h>
 #include <string>
 #include <sys/stat.h>
@@ -37,17 +38,49 @@ public:
     const std::string path = pid_path(plugin_id);
     const int descriptor = open(path.c_str(), O_RDONLY);
     if (descriptor < 0) return -1;
-    char value[32]{};
+    char value[64]{};
     const ssize_t count = read(descriptor, value, sizeof(value) - 1);
     close(descriptor);
     if (count <= 0) return -1;
-    char *end = nullptr;
+
+    char *pid_end = nullptr;
     errno = 0;
-    const long parsed = std::strtol(value, &end, 10);
-    return errno == 0 && end != value && (*end == '\0' || *end == '\n') &&
-                   parsed > 1
-               ? static_cast<pid_t>(parsed)
-               : -1;
+    const long parsed_pid = std::strtol(value, &pid_end, 10);
+    if (value[0] < '0' || value[0] > '9' || errno != 0 ||
+        pid_end == value || parsed_pid <= 1 ||
+        parsed_pid > std::numeric_limits<pid_t>::max() ||
+        (*pid_end != ' ' && *pid_end != '\t')) {
+      unlink(path.c_str());
+      return -1;
+    }
+
+    char *generation_start = pid_end;
+    while (*generation_start == ' ' || *generation_start == '\t')
+      ++generation_start;
+    char *generation_end = nullptr;
+    errno = 0;
+    const unsigned long long stored_generation =
+        std::strtoull(generation_start, &generation_end, 10);
+    while (generation_end &&
+           (*generation_end == ' ' || *generation_end == '\t' ||
+            *generation_end == '\r' || *generation_end == '\n'))
+      ++generation_end;
+    if (*generation_start < '0' || *generation_start > '9' || errno != 0 ||
+        generation_end == generation_start ||
+        !generation_end || *generation_end != '\0' ||
+        stored_generation == 0) {
+      unlink(path.c_str());
+      return -1;
+    }
+
+    const pid_t pid = static_cast<pid_t>(parsed_pid);
+    uint64_t current_generation = 0;
+    if (onion_proc_get_generation(pid, &current_generation) != 0 ||
+        current_generation != stored_generation) {
+      unlink(path.c_str());
+      return -1;
+    }
+    return pid;
   }
 
   pid_t launch(const plugin::PluginFile &plugin_file) override {
@@ -76,14 +109,32 @@ public:
       unlink(path.c_str());
       return;
     }
+    uint64_t generation = 0;
+    if (onion_proc_get_generation(pid, &generation) != 0 || generation == 0) {
+      unlink(path.c_str());
+      return;
+    }
     mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
     mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
     const int descriptor = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (descriptor < 0) return;
-    char value[32]{};
-    const int length = std::snprintf(value, sizeof(value), "%d\n", pid);
-    if (length > 0) (void)write(descriptor, value, static_cast<size_t>(length));
-    close(descriptor);
+    char value[64]{};
+    const int length = std::snprintf(value, sizeof(value), "%d %llu\n", pid,
+                                     static_cast<unsigned long long>(generation));
+    bool write_ok = length > 0 && static_cast<size_t>(length) < sizeof(value);
+    size_t offset = 0;
+    while (write_ok && offset < static_cast<size_t>(length)) {
+      const ssize_t written =
+          write(descriptor, value + offset, static_cast<size_t>(length) - offset);
+      if (written < 0 && errno == EINTR) continue;
+      if (written <= 0) {
+        write_ok = false;
+        break;
+      }
+      offset += static_cast<size_t>(written);
+    }
+    const bool close_ok = close(descriptor) == 0;
+    if (!write_ok || !close_ok) unlink(path.c_str());
   }
 
   void stop(pid_t pid, uint32_t flags) override {

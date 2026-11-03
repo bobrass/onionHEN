@@ -196,6 +196,50 @@ extern "C" bool onion_proc_is_alive(pid_t pid) {
   return sysctl(mib, 4, nullptr, nullptr, nullptr, 0) == 0;
 }
 
+extern "C" int onion_proc_get_generation(pid_t pid, uint64_t *generation) {
+  if (pid <= 0 || !generation) {
+    return -1;
+  }
+
+  int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_PROC, 0};
+  size_t buffer_size = 0;
+  if (sysctl(mib, 4, nullptr, &buffer_size, nullptr, 0) != 0) {
+    return -1;
+  }
+  void *buffer = std::malloc(buffer_size);
+  if (!buffer || sysctl(mib, 4, buffer, &buffer_size, nullptr, 0) != 0) {
+    std::free(buffer);
+    return -1;
+  }
+
+  int result = -1;
+  char *cursor = static_cast<char *>(buffer);
+  const char *end = cursor + buffer_size;
+  while (cursor < end) {
+    const size_t remaining = static_cast<size_t>(end - cursor);
+    if (remaining < sizeof(struct kinfo_proc)) {
+      break;
+    }
+    auto *process = reinterpret_cast<struct kinfo_proc *>(cursor);
+    if (process->ki_structsize < static_cast<int>(sizeof(struct kinfo_proc)) ||
+        static_cast<size_t>(process->ki_structsize) > remaining) {
+      break;
+    }
+    if (process->ki_pid == pid) {
+      const uint64_t value = process_generation(process);
+      if (value != 0) {
+        *generation = value;
+        result = 0;
+      }
+      break;
+    }
+    cursor += process->ki_structsize;
+  }
+
+  std::free(buffer);
+  return result;
+}
+
 extern "C" pid_t onion_find_pid_ex(const char *name, bool needle,
                                    bool for_bigapp) {
   if (!name) {
