@@ -290,6 +290,8 @@ static int shnext_parse_variable(const cJSON *var_obj, onion_patch_t *patch) {
   const char *label = NULL;
   const char *on_str = NULL;
   const char *off_str = NULL;
+  double offset_value;
+  uint64_t parsed_offset;
 
   if (var_obj == NULL || !cJSON_IsObject(var_obj)) {
     return -1;
@@ -304,7 +306,17 @@ static int shnext_parse_variable(const cJSON *var_obj, onion_patch_t *patch) {
   if (field == NULL || !cJSON_IsNumber(field)) {
     return -1;
   }
-  patch->offset = (uint64_t)field->valuedouble;
+  offset_value = field->valuedouble;
+  if (!(offset_value >= 0.0 && offset_value <= 9007199254740992.0)) {
+    LOG_ERROR("[engine] shnext invalid offset value=%g", offset_value);
+    return -1;
+  }
+  parsed_offset = (uint64_t)offset_value;
+  if ((double)parsed_offset != offset_value) {
+    LOG_ERROR("[engine] shnext non-integer offset value=%g", offset_value);
+    return -1;
+  }
+  patch->offset = parsed_offset;
 
   field = cJSON_GetObjectItem(var_obj, "label");
   label = cJSON_IsString(field) ? field->valuestring : NULL;
