@@ -282,7 +282,7 @@ pid_t elfldr_remote_onion_launch_file_get_pid(const char *abs_path,
 
 pid_t elfldr_remote_onion_write_and_launch_get_pid_with_args(
     const char *abs_path, const uint8_t *elf, size_t size, const char *args) {
-  if (!abs_path || !elf || size < 4)
+  if (!abs_path || abs_path[0] != '/' || !elf || size < 4)
     return -1;
 
   mkdir_parent(abs_path);
