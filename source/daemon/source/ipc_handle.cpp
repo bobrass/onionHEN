@@ -398,8 +398,12 @@ void handleIPC(clientArgs *client, std::string &inputStr,
     int enabled = onion_cjson::int_item(my_json.get(), "enabled");
     LOG_DEBUG("Adjusting Fan Speed to: %d", speed);
     if (!enabled) {
+      if (!restore_automatic_fan()) {
+        LOG_ERROR("Fan disable: failed to restore automatic threshold");
+        reply(sender_app, true);
+        break;
+      }
       onion_notify(true, "notify.fan.disabled");
-      restore_automatic_fan();
       const onion::Settings saved = g_settings.update([](onion::Settings &s) {
         s.enable_fan_speed = false;
       });
