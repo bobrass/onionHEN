@@ -23,7 +23,7 @@ struct DirectoryIdentityStack {
 
 static bool push_directory_identity(DIR *dir, DirectoryIdentityStack *stack,
                                     size_t depth) {
-  if (depth >= PATH_MAX) {
+  if (depth >= static_cast<size_t>(PATH_MAX)) {
     errno = ELOOP;
     return false;
   }
@@ -62,14 +62,34 @@ static uint64_t calculate_total_size(const char *path,
 
   struct dirent *entry;
   char fullPath[1024];
-  while ((entry = readdir(dir)) != NULL) {
+  for (;;) {
+    errno = 0;
+    entry = readdir(dir);
+    if (entry == NULL) {
+      if (errno == EINTR)
+        continue;
+      if (errno != 0)
+        LOG_WARN("directory size scan incomplete for %s: %s", path,
+                 strerror(errno));
+      break;
+    }
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
 
-    snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
-    struct stat st;
-    if (stat(fullPath, &st) != 0)
+    const int path_length =
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
+    if (path_length < 0 ||
+        static_cast<size_t>(path_length) >= sizeof(fullPath)) {
+      LOG_WARN("directory size scan skipped overlong path: %s/%s", path,
+               entry->d_name);
       continue;
+    }
+    struct stat st;
+    if (stat(fullPath, &st) != 0) {
+      LOG_WARN("directory size scan cannot stat %s: %s", fullPath,
+               strerror(errno));
+      continue;
+    }
     if (S_ISDIR(st.st_mode))
       total += static_cast<long>(
           calculate_total_size(fullPath, stack, depth + 1));
@@ -77,7 +97,9 @@ static uint64_t calculate_total_size(const char *path,
       total += st.st_size;
   }
 
-  closedir(dir);
+  if (closedir(dir) != 0)
+    LOG_WARN("directory size scan could not close %s: %s", path,
+             strerror(errno));
   return static_cast<uint64_t>(total);
 }
 
