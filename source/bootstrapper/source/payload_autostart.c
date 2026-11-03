@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 typedef struct PayloadEntry {
@@ -88,6 +89,16 @@ static bool is_elf_filename(const char *filename) {
   return extension && strcmp(extension, ".elf") == 0;
 }
 
+static bool is_regular_payload_entry(const char *path, unsigned char type) {
+  if (type == DT_REG)
+    return true;
+  if (type != DT_UNKNOWN)
+    return false;
+
+  struct stat st;
+  return lstat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+
 static void scan_payload_directory(PayloadList *list, const char *directory) {
   DIR *dir = opendir(directory);
   if (!dir)
@@ -95,7 +106,7 @@ static void scan_payload_directory(PayloadList *list, const char *directory) {
 
   struct dirent *entry;
   while ((entry = readdir(dir)) != NULL) {
-    if (entry->d_type != DT_REG || !is_elf_filename(entry->d_name))
+    if (!is_elf_filename(entry->d_name))
       continue;
 
     char path[512];
@@ -110,6 +121,8 @@ static void scan_payload_directory(PayloadList *list, const char *directory) {
       LOG_WARN("skipping payload with oversized path: %s", entry->d_name);
       continue;
     }
+    if (!is_regular_payload_entry(path, entry->d_type))
+      continue;
 
     if (!if_exists(marker_path)) {
       LOG_WARN("skipping auto start for payload: %s", path);
