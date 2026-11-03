@@ -85,13 +85,23 @@ static bool calculate_total_size_recursive(const char *path,
   return true;
 }
 
-uint64_t calculateTotalSize(const char *path) {
+bool calculateTotalSize(const char *path, uint64_t *size_out) {
   uint64_t total = 0;
-  if (!path || !calculate_total_size_recursive(path, &total)) {
+  if (!path || !size_out) {
+    errno = EINVAL;
+    const int savedErrno = errno;
     onion_notify(false, "notify.fs.size_failed", path ? path : "");
-    return 0;
+    errno = savedErrno;
+    return false;
   }
-  return total;
+  if (!calculate_total_size_recursive(path, &total)) {
+    const int savedErrno = errno;
+    onion_notify(false, "notify.fs.size_failed", path);
+    errno = savedErrno;
+    return false;
+  }
+  *size_out = total;
+  return true;
 }
 
 static const char *sizes[] = {"EiB", "PiB", "TiB", "GiB", "MiB", "KiB", "B"};
