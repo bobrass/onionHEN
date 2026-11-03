@@ -34,7 +34,8 @@ bool onion_payload_is_elf(const void *buf, size_t size) {
 
 static bool valid_payload_key(const char *title_id) {
   if (!title_id || !title_id[0] || strcmp(title_id, ".") == 0 ||
-      strcmp(title_id, "..") == 0 || strlen(title_id) >= 64)
+      strcmp(title_id, "..") == 0 ||
+      strlen(title_id) >= ONION_PAYLOAD_KEY_SIZE)
     return false;
   for (const unsigned char *p = (const unsigned char *)title_id; *p; ++p) {
     if (*p == '/' || *p == '\\' || *p < 0x20 || *p == 0x7f)
@@ -44,7 +45,10 @@ static bool valid_payload_key(const char *title_id) {
 }
 
 bool onion_payload_elf_key_from_name(const char *name, char *out, size_t out_sz) {
-  if (!name || !out || out_sz < 2)
+  if (!out || out_sz == 0)
+    return false;
+  out[0] = '\0';
+  if (!name || out_sz < 2)
     return false;
 
   const char *base = strrchr(name, '/');
@@ -55,13 +59,15 @@ bool onion_payload_elf_key_from_name(const char *name, char *out, size_t out_sz)
   size_t n = onion_elf_name_stem_n(base, strlen(base));
   if (n == 0)
     return false; /* bare ".elf" */
-  if (n >= out_sz)
-    n = out_sz - 1;
+  if (n >= out_sz || n >= ONION_PAYLOAD_KEY_SIZE)
+    return false;
 
   memcpy(out, base, n);
   out[n] = '\0';
-  if (out[0] == '\0' || strchr(out, '/') != NULL || strchr(out, '\\') != NULL)
+  if (out[0] == '\0' || strchr(out, '/') != NULL || strchr(out, '\\') != NULL) {
+    out[0] = '\0';
     return false;
+  }
   return true;
 }
 
@@ -285,7 +291,7 @@ bool onion_payload_load_with_key(const char *path, const char *filename,
     return false;
   }
 
-  char key[64];
+  char key[ONION_PAYLOAD_KEY_SIZE];
   if (requested_key && valid_payload_key(requested_key)) {
     snprintf(key, sizeof(key), "%s", requested_key);
   } else if (!onion_payload_elf_key_from_name(base, key, sizeof(key))) {

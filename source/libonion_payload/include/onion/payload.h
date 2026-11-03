@@ -17,11 +17,13 @@
 extern "C" {
 #endif
 
+#define ONION_PAYLOAD_KEY_SIZE 64
+
 bool onion_payload_is_elf(const void *buf, size_t size);
 
 /**
  * Derive launch/PID key from basename: "foo.elf" → "foo".
- * Rejects empty stem (".elf") and path separators.
+ * Rejects empty stems, path separators, and keys too long for the PID record.
  */
 bool onion_payload_elf_key_from_name(const char *name, char *out, size_t out_sz);
 
