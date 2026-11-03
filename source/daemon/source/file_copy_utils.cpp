@@ -140,12 +140,40 @@ bool copyFile(const char *source, const char *destination) {
   return true;
 }
 
-bool copyRecursive(const char *source, const char *destination) {
+struct CopyDirectoryAncestor {
+  dev_t device;
+  ino_t inode;
+  const CopyDirectoryAncestor *parent;
+};
+
+static bool copyRecursiveInternal(const char *source, const char *destination,
+                                  const CopyDirectoryAncestor *ancestors) {
   DIR *dir = opendir(source);
   if (dir == NULL) {
     onion_notify(false, "notify.fs.copy_recursive", source);
     return false;
   }
+
+  struct stat source_stat;
+  if (fstat(dirfd(dir), &source_stat) != 0) {
+    const int error = errno;
+    closedir(dir);
+    onion_notify(false, "notify.fs.copy_recursive", source);
+    errno = error;
+    return false;
+  }
+  for (const CopyDirectoryAncestor *ancestor = ancestors; ancestor != NULL;
+       ancestor = ancestor->parent) {
+    if (source_stat.st_dev == ancestor->device &&
+        source_stat.st_ino == ancestor->inode) {
+      closedir(dir);
+      onion_notify(false, "notify.fs.copy_recursive", source);
+      errno = ELOOP;
+      return false;
+    }
+  }
+  const CopyDirectoryAncestor current_ancestor = {
+      source_stat.st_dev, source_stat.st_ino, ancestors};
 
   const bool created_destination = mkdir(destination, 0777) == 0;
   if (!created_destination && errno != EEXIST) {
@@ -232,7 +260,7 @@ bool copyRecursive(const char *source, const char *destination) {
       return false;
     }
     if (S_ISDIR(st.st_mode)) {
-      if (!copyRecursive(srcPath, destPath)) {
+      if (!copyRecursiveInternal(srcPath, destPath, &current_ancestor)) {
         const int error = errno;
         closedir(dir);
         errno = error;
@@ -248,4 +276,8 @@ bool copyRecursive(const char *source, const char *destination) {
       }
     }
   }
+}
+
+bool copyRecursive(const char *source, const char *destination) {
+  return copyRecursiveInternal(source, destination, NULL);
 }
