@@ -2,6 +2,8 @@
 
 #include "elfldr_remote.h"
 
+#include <onion/fs.h>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -284,21 +286,8 @@ pid_t elfldr_remote_onion_write_and_launch_get_pid_with_args(
     return -1;
 
   mkdir_parent(abs_path);
-
-  int out = open(abs_path, O_WRONLY | O_CREAT | O_TRUNC, 0777);
-  if (out < 0)
+  if (!write_file_atomic(abs_path, elf, size))
     return -1;
-
-  size_t off = 0;
-  while (off < size) {
-    ssize_t w = write(out, elf + off, size - off);
-    if (w <= 0) {
-      close(out);
-      return -1;
-    }
-    off += (size_t)w;
-  }
-  close(out);
 
   return elfldr_remote_onion_launch_file_get_pid(abs_path, args);
 }
