@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace onion::cheats::sync {
@@ -62,7 +63,7 @@ void on_phase_progress(size_t completed, size_t total, void *user) {
   }
 }
 
-void cleanup_temp(const std::string &root, const std::string &parent,
+bool cleanup_temp(const std::string &root, const std::string &parent,
                   SyncProgressFn progress = nullptr,
                   void *progress_user = nullptr) {
   if (if_exists(root.c_str())) {
@@ -70,11 +71,14 @@ void cleanup_temp(const std::string &root, const std::string &parent,
     if (progress) {
       progress("cleanup", 0, 0, progress_user);
     }
-    (void)rmtree_with_progress(root.c_str(),
-                               progress ? on_phase_progress : nullptr,
-                               &bridge);
+    if (!rmtree_with_progress(root.c_str(),
+                              progress ? on_phase_progress : nullptr,
+                              &bridge)) {
+      return false;
+    }
   }
   (void)rmdir(parent.c_str());
+  return true;
 }
 
 struct DownloadProgress {
@@ -162,11 +166,17 @@ SyncStatus CheatSyncEngine::tryOne(const ICheatCatalog &catalog,
   const std::string temp_root = join_path(temp_parent, catalog.id());
   const std::string zip_path = join_path(temp_root, "archive.zip");
   const std::string extract_root = join_path(temp_root, "extract");
-  cleanup_temp(temp_root, temp_parent);
+  if (!cleanup_temp(temp_root, temp_parent)) {
+    out.error = "temp directory cleanup failed";
+    return SyncStatus::Io;
+  }
   if (should_cancel_ && should_cancel_(cancel_user_)) {
     return SyncStatus::Cancelled;
   }
-  if (!mkdir_tree(temp_root.c_str())) {
+  struct stat parent_stat {};
+  if (!mkdir_tree(temp_parent.c_str()) ||
+      lstat(temp_parent.c_str(), &parent_stat) != 0 ||
+      !S_ISDIR(parent_stat.st_mode) || mkdir(temp_root.c_str(), 0700) != 0) {
     out.error = "temp directory failed";
     return SyncStatus::Io;
   }
