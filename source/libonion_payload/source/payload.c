@@ -338,11 +338,74 @@ uint8_t *onion_payload_read_file(const char *path, size_t *out_size) {
   return buf;
 }
 
+/* Returns 1 for ELF magic, 0 for a readable non-ELF file, and -1 for I/O or
+ * source errors. User payloads are launched by path, so validating their
+ * magic does not require buffering the entire file in this process. */
+static int payload_file_elf_status(const char *path) {
+  if (!path || !path[0]) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  const int fd = open(path, O_RDONLY | O_NONBLOCK);
+  if (fd < 0) {
+    LOG_ERROR("Failed to open file %s (%s)", path, strerror(errno));
+    return -1;
+  }
+
+  struct stat st;
+  if (fstat(fd, &st) != 0) {
+    const int saved_errno = errno;
+    LOG_ERROR("Failed to stat file %s (%s)", path, strerror(saved_errno));
+    close(fd);
+    errno = saved_errno;
+    return -1;
+  }
+  if (!S_ISREG(st.st_mode)) {
+    LOG_ERROR("Payload source is not a regular file: %s", path);
+    close(fd);
+    errno = EINVAL;
+    return -1;
+  }
+  if (st.st_size <= 0) {
+    LOG_WARN("Empty payload file %s", path);
+    close(fd);
+    errno = EINVAL;
+    return -1;
+  }
+  if (st.st_size < 4) {
+    close(fd);
+    return 0;
+  }
+
+  uint8_t magic[4];
+  size_t offset = 0;
+  while (offset < sizeof(magic)) {
+    const ssize_t bytes = read(fd, magic + offset, sizeof(magic) - offset);
+    if (bytes < 0 && errno == EINTR)
+      continue;
+    if (bytes <= 0) {
+      const int saved_errno = bytes < 0 ? errno : EIO;
+      LOG_ERROR("Failed to read payload header %s (%s)", path,
+                strerror(saved_errno));
+      close(fd);
+      errno = saved_errno;
+      return -1;
+    }
+    offset += (size_t)bytes;
+  }
+  if (close(fd) != 0) {
+    const int saved_errno = errno;
+    LOG_ERROR("Failed to close file %s (%s)", path, strerror(saved_errno));
+    errno = saved_errno;
+    return -1;
+  }
+  return onion_payload_is_elf(magic, sizeof(magic)) ? 1 : 0;
+}
+
 bool onion_payload_load_with_key(const char *path, const char *filename,
                                  const char *requested_key) {
-  size_t size = 0;
-  uint8_t *buf = onion_payload_read_file(path, &size);
-  if (!buf)
+  if (!path || !path[0])
     return false;
 
   char name_buf[256];
@@ -357,14 +420,15 @@ bool onion_payload_load_with_key(const char *path, const char *filename,
       onion_elf_name_stem_n(base, base_len) == 0) {
     LOG_WARN("Not a .elf payload: %s", base);
     onion_notify(1, "notify.payload.elf_only", base);
-    free(buf);
     return false;
   }
 
-  if (!onion_payload_is_elf(buf, size)) {
+  const int elf_status = payload_file_elf_status(path);
+  if (elf_status < 0)
+    return false;
+  if (elf_status == 0) {
     LOG_ERROR("Invalid ELF file: %s", base);
     onion_notify(1, "notify.payload.invalid_elf", base);
-    free(buf);
     return false;
   }
 
@@ -374,7 +438,6 @@ bool onion_payload_load_with_key(const char *path, const char *filename,
   } else if (!onion_payload_elf_key_from_name(base, key, sizeof(key))) {
     LOG_ERROR("Invalid ELF basename (empty stem): %s", base);
     onion_notify(1, "notify.payload.invalid_name", base);
-    free(buf);
     return false;
   }
 
@@ -384,7 +447,6 @@ bool onion_payload_load_with_key(const char *path, const char *filename,
 
   const int launch_lock = lock_payload_key(key);
   if (launch_lock < 0) {
-    free(buf);
     return false;
   }
 
@@ -392,7 +454,6 @@ bool onion_payload_load_with_key(const char *path, const char *filename,
     LOG_INFO("Payload %s is already running; keeping the recorded instance",
              key);
     close(launch_lock);
-    free(buf);
     return true;
   }
 
@@ -400,12 +461,10 @@ bool onion_payload_load_with_key(const char *path, const char *filename,
     LOG_WARN("Private elfldr :%u unavailable; payload %s not started",
              ONION_ELFLDR_PORT, key);
     close(launch_lock);
-    free(buf);
     return false;
   }
 
   const pid_t pid = onion_payload_launch_elfldr(key, path);
-  free(buf);
   /* Only persist real pids; never write 0/1 (PID 1 would hit system init). */
   if (pid > 1)
     onion_payload_write_pid_file(pid_path, pid);
