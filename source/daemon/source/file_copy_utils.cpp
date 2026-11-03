@@ -250,7 +250,14 @@ bool copyRecursive(const char *source, const char *destination) {
   struct dirent *entry;
   char srcPath[1024];
   char destPath[1024];
-  while ((entry = readdir(dir)) != NULL) {
+  int readError = 0;
+  for (;;) {
+    errno = 0;
+    entry = readdir(dir);
+    if (entry == NULL) {
+      readError = errno;
+      break;
+    }
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
 
@@ -303,6 +310,19 @@ bool copyRecursive(const char *source, const char *destination) {
     }
   }
 
-  closedir(dir);
+  if (readError != 0) {
+    closedir(dir);
+    errno = readError;
+    onion_notify(false, "notify.fs.copy_recursive", source);
+    LOG_ERROR("copyRecursive could not finish reading %s: %s", source,
+              strerror(errno));
+    return false;
+  }
+  if (closedir(dir) != 0) {
+    onion_notify(false, "notify.fs.copy_recursive", source);
+    LOG_ERROR("copyRecursive could not close %s: %s", source,
+              strerror(errno));
+    return false;
+  }
   return true;
 }
