@@ -19,6 +19,8 @@ namespace {
 
 constexpr size_t kMaxConfigFile = 64u * 1024u;
 
+enum class FileReadResult { Success, Missing, Failure };
+
 bool valid_key(std::string_view key) {
   if (key.empty() || key.size() >= 64) return false;
   return std::all_of(key.begin(), key.end(), [](unsigned char c) {
@@ -32,22 +34,39 @@ bool valid_value(std::string_view value) {
          value.find('\r') == std::string_view::npos;
 }
 
-bool read_file(const std::string &path, std::string &out) {
+FileReadResult read_file(const std::string &path, std::string &out) {
   out.clear();
-  const int fd = open(path.c_str(), O_RDONLY);
-  if (fd < 0) return false;
+  int fd = -1;
+  do {
+    fd = open(path.c_str(), O_RDONLY);
+  } while (fd < 0 && errno == EINTR);
+  if (fd < 0)
+    return errno == ENOENT ? FileReadResult::Missing : FileReadResult::Failure;
+
   char buffer[4096];
-  ssize_t count = 0;
-  while ((count = read(fd, buffer, sizeof(buffer))) > 0) {
-    if (out.size() + static_cast<size_t>(count) > kMaxConfigFile) {
-      close(fd);
-      out.clear();
-      return false;
+  for (;;) {
+    const ssize_t count = read(fd, buffer, sizeof(buffer));
+    if (count > 0) {
+      if (static_cast<size_t>(count) > kMaxConfigFile - out.size()) {
+        close(fd);
+        out.clear();
+        return FileReadResult::Failure;
+      }
+      out.append(buffer, static_cast<size_t>(count));
+      continue;
     }
-    out.append(buffer, static_cast<size_t>(count));
+    if (count == 0) break;
+    if (errno == EINTR) continue;
+    close(fd);
+    out.clear();
+    return FileReadResult::Failure;
   }
-  close(fd);
-  return count == 0;
+
+  if (close(fd) != 0) {
+    out.clear();
+    return FileReadResult::Failure;
+  }
+  return FileReadResult::Success;
 }
 
 bool write_file(const std::string &path, const std::string &body) {
@@ -68,7 +87,9 @@ bool ConfigStore::load(std::string_view owner) {
   const std::string owner_str(owner);
   std::map<std::string, std::string> values;
   std::string body;
-  if (read_file(path_for(owner), body)) {
+  const FileReadResult result = read_file(path_for(owner), body);
+  if (result == FileReadResult::Failure) return false;
+  if (result == FileReadResult::Success) {
     size_t line_start = 0;
     while (line_start <= body.size()) {
       const size_t line_end = body.find('\n', line_start);
@@ -95,6 +116,8 @@ bool ConfigStore::save(std::string_view owner) {
   if (found == cache_.end()) return false;
   std::string body;
   for (const auto &[key, value] : found->second) {
+    const size_t entry_size = key.size() + value.size() + 2;
+    if (entry_size > kMaxConfigFile - body.size()) return false;
     body += key;
     body += '=';
     body += value;
@@ -110,7 +133,10 @@ plugin_ui::Status ConfigStore::get(std::string_view owner,
   value.clear();
   std::lock_guard<std::mutex> lock(mutex_);
   const std::string owner_str(owner);
-  if (!cache_.contains(owner_str)) (void)load(owner);
+  if (!cache_.contains(owner_str) && !load(owner)) {
+    LOG_WARN("[plugins] config load failed for %s", owner_str.c_str());
+    return plugin_ui::Status::InvalidState;
+  }
   const auto found = cache_.find(owner_str);
   if (found == cache_.end()) return plugin_ui::Status::NotFound;
   const auto kv = found->second.find(std::string(key));
@@ -126,11 +152,26 @@ plugin_ui::Status ConfigStore::set(std::string_view owner,
     return plugin_ui::Status::InvalidArgument;
   std::lock_guard<std::mutex> lock(mutex_);
   const std::string owner_str(owner);
-  if (!cache_.contains(owner_str)) (void)load(owner);
-  cache_[owner_str][std::string(key)] = std::string(value);
-  if (!save(owner))
-    LOG_WARN("[plugins] config persist failed for %s", owner_str.c_str());
-  return plugin_ui::Status::Ok;
+  if (!cache_.contains(owner_str) && !load(owner)) {
+    LOG_WARN("[plugins] config load failed for %s", owner_str.c_str());
+    return plugin_ui::Status::InvalidState;
+  }
+
+  auto &values = cache_[owner_str];
+  const std::string key_str(key);
+  const auto found = values.find(key_str);
+  if (found == values.end()) {
+    const auto inserted = values.emplace(key_str, std::string(value));
+    if (save(owner)) return plugin_ui::Status::Ok;
+    values.erase(inserted.first);
+  } else {
+    std::string previous = found->second;
+    found->second = std::string(value);
+    if (save(owner)) return plugin_ui::Status::Ok;
+    found->second = std::move(previous);
+  }
+  LOG_WARN("[plugins] config persist failed for %s", owner_str.c_str());
+  return plugin_ui::Status::InvalidState;
 }
 
 PluginHostServices::PluginHostServices(ConfigStore &store) : store_(store) {}
