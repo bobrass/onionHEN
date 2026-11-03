@@ -70,21 +70,71 @@ bool copyFile(const char *source, const char *destination) {
     return false;
   }
 
+  struct stat source_stat;
+  if (fstat(fileno(src), &source_stat) != 0) {
+    const int error = errno;
+    fclose(src);
+    errno = error;
+    onion_notify(false, "notify.fs.copy_file", source);
+    LOG_ERROR("copyFile failed to inspect %s: %s", source, strerror(errno));
+    return false;
+  }
+
+  struct stat destination_stat;
+  const int destination_stat_result = stat(destination, &destination_stat);
+  if (destination_stat_result == 0 &&
+      source_stat.st_dev == destination_stat.st_dev &&
+      source_stat.st_ino == destination_stat.st_ino) {
+    fclose(src);
+    errno = EINVAL;
+    onion_notify(false, "notify.fs.copy_file", destination);
+    LOG_ERROR("copyFile source and destination are the same file: %s",
+              source);
+    return false;
+  }
+  if (destination_stat_result != 0 && errno != ENOENT) {
+    const int error = errno;
+    fclose(src);
+    errno = error;
+    onion_notify(false, "notify.fs.copy_file", destination);
+    LOG_ERROR("copyFile failed to inspect %s: %s", destination,
+              strerror(errno));
+    return false;
+  }
+
   FILE *dest = fopen(destination, "wb");
   if (dest == NULL) {
+    const int error = errno;
     onion_notify(false, "notify.fs.copy_file", destination);
-    LOG_ERROR("copyFile failed for %s", destination);
     fclose(src);
+    errno = error;
+    LOG_ERROR("copyFile failed for %s: %s", destination, strerror(errno));
     return false;
   }
 
   char buffer[1024];
-  size_t bytes = 0;
-  while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0)
-    fwrite(buffer, 1, bytes, dest);
+  int error = 0;
+  for (;;) {
+    const size_t bytes = fread(buffer, 1, sizeof(buffer), src);
+    if (bytes > 0 && fwrite(buffer, 1, bytes, dest) != bytes) {
+      error = errno != 0 ? errno : EIO;
+      break;
+    }
+    if (bytes < sizeof(buffer)) {
+      if (ferror(src)) error = errno != 0 ? errno : EIO;
+      break;
+    }
+  }
 
-  fclose(src);
-  fclose(dest);
+  if (fclose(src) != 0 && error == 0) error = errno != 0 ? errno : EIO;
+  if (fclose(dest) != 0 && error == 0) error = errno != 0 ? errno : EIO;
+  if (error != 0) {
+    errno = error;
+    onion_notify(false, "notify.fs.copy_file", destination);
+    LOG_ERROR("copyFile failed writing %s: %s", destination,
+              strerror(errno));
+    return false;
+  }
   return true;
 }
 
