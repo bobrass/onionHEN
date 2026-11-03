@@ -23,6 +23,11 @@ static bool is_directory_entry(const char *path, unsigned char type) {
   return S_ISDIR(st.st_mode);
 }
 
+static bool is_existing_directory(const char *path) {
+  struct stat st;
+  return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
 bool if_exists(const char *path) {
   struct stat buffer;
   if (!path) {
@@ -122,12 +127,17 @@ bool mkdir_tree(const char *path) {
       continue;
     }
     current[i] = '\0';
-    if (current[0] != '\0' && mkdir(current, 0777) != 0 && errno != EEXIST) {
-      return false;
+    if (current[0] != '\0' && mkdir(current, 0777) != 0) {
+      if (errno != EEXIST || !is_existing_directory(current)) {
+        return false;
+      }
     }
     current[i] = '/';
   }
-  return mkdir(current, 0777) == 0 || errno == EEXIST;
+  if (mkdir(current, 0777) == 0) {
+    return true;
+  }
+  return errno == EEXIST && is_existing_directory(current);
 }
 
 static bool build_child_path(char *child, size_t child_size,
