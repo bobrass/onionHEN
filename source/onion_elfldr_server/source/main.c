@@ -51,40 +51,101 @@
 
 #define ONION_ELFLDR_STATE ONION_SYSTEM_TMP_ELFLDR_STATE
 
+static int write_pid_marker_atomic(const char *path, const char *value,
+                                   size_t length) {
+  char temporary[256];
+  int fd = -1;
+  unsigned int attempt;
+
+  for (attempt = 0; attempt < 64; ++attempt) {
+    const int n = snprintf(temporary, sizeof(temporary), "%s.tmp.%d.%u",
+                           path, (int)getpid(), attempt);
+    if (n < 0 || (size_t)n >= sizeof(temporary)) {
+      errno = ENAMETOOLONG;
+      return -1;
+    }
+    fd = open(temporary, O_WRONLY | O_CREAT | O_EXCL, 0666);
+    if (fd >= 0)
+      break;
+    if (errno != EEXIST)
+      return -1;
+  }
+  if (fd < 0) {
+    errno = EEXIST;
+    return -1;
+  }
+
+  size_t offset = 0;
+  while (offset < length) {
+    const ssize_t written = write(fd, value + offset, length - offset);
+    if (written < 0 && errno == EINTR)
+      continue;
+    if (written <= 0) {
+      const int saved_errno = written < 0 ? errno : EIO;
+      close(fd);
+      unlink(temporary);
+      errno = saved_errno;
+      return -1;
+    }
+    offset += (size_t)written;
+  }
+
+  if (fsync(fd) != 0) {
+    const int saved_errno = errno;
+    close(fd);
+    unlink(temporary);
+    errno = saved_errno;
+    return -1;
+  }
+  if (close(fd) != 0) {
+    const int saved_errno = errno;
+    unlink(temporary);
+    errno = saved_errno;
+    return -1;
+  }
+  if (rename(temporary, path) != 0) {
+    const int saved_errno = errno;
+    unlink(temporary);
+    errno = saved_errno;
+    return -1;
+  }
+  return 0;
+}
+
+static int write_runtime_pid_marker(const char *path) {
+  char value[32];
+  const int length = snprintf(value, sizeof(value), "%d", getpid());
+  if (length <= 0 || (size_t)length >= sizeof(value)) {
+    errno = EOVERFLOW;
+    return -1;
+  }
+  return write_pid_marker_atomic(path, value, (size_t)length);
+}
+
 static void write_state_file(void) {
   mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
   mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
-  int fd = open(ONION_ELFLDR_STATE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-  if(fd < 0) {
-    return;
+  if (write_runtime_pid_marker(ONION_ELFLDR_STATE) != 0) {
+    LOG_ERROR("failed to publish loader state marker: %s", strerror(errno));
   }
-  char buf[32];
-  int len = snprintf(buf, sizeof(buf), "%d", getpid());
-  if(len > 0) {
-    (void)write(fd, buf, (size_t)len);
-  }
-  close(fd);
 }
 
-static void set_launch_busy(bool busy) {
+static bool set_launch_busy(bool busy) {
   if(!busy) {
-    unlink(ONION_SYSTEM_TMP_ELFLDR_BUSY);
-    return;
+    if (unlink(ONION_SYSTEM_TMP_ELFLDR_BUSY) != 0 && errno != ENOENT) {
+      LOG_ERROR("failed to clear loader busy marker: %s", strerror(errno));
+      return false;
+    }
+    return true;
   }
 
   mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
   mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
-  int fd = open(ONION_SYSTEM_TMP_ELFLDR_BUSY,
-                O_WRONLY | O_CREAT | O_TRUNC, 0666);
-  if(fd < 0) {
-    return;
+  if (write_runtime_pid_marker(ONION_SYSTEM_TMP_ELFLDR_BUSY) != 0) {
+    LOG_ERROR("failed to publish loader busy marker: %s", strerror(errno));
+    return false;
   }
-  char buf[32];
-  int len = snprintf(buf, sizeof(buf), "%d", getpid());
-  if(len > 0) {
-    (void)write(fd, buf, (size_t)len);
-  }
-  close(fd);
+  return true;
 }
 
 static int send_text(int fd, const char *text) {
@@ -432,7 +493,13 @@ static void on_connection(int fd) {
   LOG_DEBUG("spawning %s (%zu bytes)", filename, len);
   /* The runtime supervisor must not mistake a synchronous, long-running spawn
    * for a wedged loader just because ping is queued behind this connection. */
-  set_launch_busy(true);
+  if (!set_launch_busy(true)) {
+    send_text(fd, "ERR unable to publish loader busy marker\n");
+    free(filename);
+    free(args);
+    free(buf);
+    return;
+  }
   pid = payload_spawn(filename, args, buf, len);
   if(pid > 1) {
     char out[64];
@@ -443,7 +510,7 @@ static void on_connection(int fd) {
     send_text(fd, "ERR spawn failed\n");
     LOG_ERROR("spawn failed for %s", filename);
   }
-  set_launch_busy(false);
+  (void)set_launch_busy(false);
 
   free(filename);
   free(args);
