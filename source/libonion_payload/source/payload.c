@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -42,6 +43,51 @@ static bool valid_payload_key(const char *title_id) {
       return false;
   }
   return true;
+}
+
+static int lock_payload_key(const char *key) {
+  if (!valid_payload_key(key)) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if ((mkdir(ONION_SYSTEM_TMP_ROOT, 0777) != 0 && errno != EEXIST) ||
+      (mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777) != 0 && errno != EEXIST)) {
+    LOG_ERROR("Failed to create payload PID directory (%s)", strerror(errno));
+    return -1;
+  }
+
+  char lock_path[256];
+  const int len = snprintf(lock_path, sizeof(lock_path), "%s/%s.LOCK",
+                           ONION_SYSTEM_TMP_PID_ROOT, key);
+  if (len <= 0 || (size_t)len >= sizeof(lock_path)) {
+    errno = ENAMETOOLONG;
+    return -1;
+  }
+
+  /* Keep the lock file: unlinking it can let a second opener lock a new inode
+   * while this process still holds the old inode. flock releases on close or
+   * process exit, so an interrupted launch cannot leave a stale lock. */
+  const int fd = open(lock_path, O_CREAT | O_RDWR, 0600);
+  if (fd < 0) {
+    LOG_ERROR("Failed to open payload launch lock %s (%s)", lock_path,
+              strerror(errno));
+    return -1;
+  }
+
+  if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+    const int saved_errno = errno;
+    close(fd);
+    if (saved_errno == EWOULDBLOCK || saved_errno == EAGAIN) {
+      LOG_INFO("Payload %s is already being loaded", key);
+    } else {
+      LOG_ERROR("Failed to acquire payload launch lock %s (%s)", lock_path,
+                strerror(saved_errno));
+    }
+    errno = saved_errno;
+    return -1;
+  }
+  return fd;
 }
 
 bool onion_payload_elf_key_from_name(const char *name, char *out, size_t out_sz) {
@@ -319,9 +365,16 @@ bool onion_payload_load_with_key(const char *path, const char *filename,
   char pid_path[256];
   onion_payload_pid_path(pid_path, sizeof(pid_path), key);
 
+  const int launch_lock = lock_payload_key(key);
+  if (launch_lock < 0) {
+    free(buf);
+    return false;
+  }
+
   if (onion_payload_running(key)) {
     LOG_INFO("Payload %s is already running; keeping the recorded instance",
              key);
+    close(launch_lock);
     free(buf);
     return true;
   }
@@ -329,6 +382,7 @@ bool onion_payload_load_with_key(const char *path, const char *filename,
   if (!elfldr_remote_onion_available()) {
     LOG_WARN("Private elfldr :%u unavailable; payload %s not started",
              ONION_ELFLDR_PORT, key);
+    close(launch_lock);
     free(buf);
     return false;
   }
@@ -340,6 +394,7 @@ bool onion_payload_load_with_key(const char *path, const char *filename,
     onion_payload_write_pid_file(pid_path, pid);
   else
     onion_payload_write_pid_file(pid_path, -1);
+  close(launch_lock);
   return pid > 1;
 }
 
