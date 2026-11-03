@@ -175,7 +175,14 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
     result.accessible = true;
     std::size_t examined_entries = 0;
     bool pkg_entry_limit_reached = false;
-    while (const struct dirent *entry = ::readdir(directory)) {
+    for (;;) {
+      errno = 0;
+      const struct dirent *entry = ::readdir(directory);
+      if (!entry) {
+        if (errno != 0)
+          result.incomplete = true;
+        break;
+      }
       if (examined_entries >= kMaxExaminedPkgDirEntries) {
         result.truncated = true;
         break;
@@ -188,7 +195,12 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
         shellui_file.push_back('/');
       shellui_file += entry->d_name;
       struct stat st {};
-      if (::stat(shellui_file.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+      if (::stat(shellui_file.c_str(), &st) != 0) {
+        if (errno != ENOENT)
+          result.incomplete = true;
+        continue;
+      }
+      if (!S_ISREG(st.st_mode))
         continue;
       if (result.entries.size() == kMaxPkgEntries) {
         result.truncated = true;
@@ -202,7 +214,8 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
       result.entries.push_back({entry->d_name, std::move(shellui_file),
                                 std::move(system_file), system_path});
     }
-    ::closedir(directory);
+    if (::closedir(directory) != 0)
+      result.incomplete = true;
     if (pkg_entry_limit_reached)
       break;
   }
