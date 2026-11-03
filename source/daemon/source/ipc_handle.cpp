@@ -28,7 +28,7 @@
 bool copyRecursive(const char *source, const char *destination);
 bool copyFile(const char *source, const char *destination);
 void calculateSize(uint64_t size, char *result);
-uint64_t calculateTotalSize(const char *path);
+bool calculateTotalSize(const char *path, uint64_t *total);
 extern "C" int unmount(const char *path, int flags);
 
 namespace {
@@ -317,7 +317,13 @@ void handleIPC(clientArgs *client, std::string &inputStr,
       reply(sender_app, true);
       break;
     }
-    uint64_t size = calculateTotalSize(path);
+    uint64_t size;
+    if (!calculateTotalSize(path, &size)) {
+      LOG_ERROR("failed to calculate directory size for %s: %s", path,
+                strerror(errno));
+      reply(sender_app, true);
+      break;
+    }
     snprintf(size_buf, sizeof(size_buf), "%lu",
              static_cast<unsigned long>(size));
     LOG_DEBUG("calculated directory size %s", size_buf);
@@ -348,8 +354,15 @@ void handleIPC(clientArgs *client, std::string &inputStr,
       reply(sender_app, true);
       break;
     }
+    uint64_t size;
+    if (!calculateTotalSize(path, &size)) {
+      LOG_ERROR("failed to calculate directory size for %s: %s", path,
+                strerror(errno));
+      reply(sender_app, true);
+      break;
+    }
     snprintf(size_buf, sizeof(size_buf), "%lu",
-             static_cast<unsigned long>(calculateTotalSize(path)));
+             static_cast<unsigned long>(size));
     if (copyRecursive(path, dest)) {
       reply(sender_app, false, size_buf);
     } else {

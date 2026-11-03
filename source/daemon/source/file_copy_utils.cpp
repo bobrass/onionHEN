@@ -5,6 +5,7 @@
 
 #include <onion/platform.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -16,32 +17,110 @@
 #include <string.h>
 #include <stdbool.h>
 
-uint64_t calculateTotalSize(const char *path) {
-  long total = 0;
-  DIR *dir = opendir(path);
-  if (dir == NULL) {
-    onion_notify(false, "notify.fs.size_failed", path);
-    return 0;
-  }
+struct SizeDirectoryAncestor {
+  dev_t device;
+  ino_t inode;
+  const SizeDirectoryAncestor *parent;
+};
 
-  struct dirent *entry;
+static bool calculateTotalSizeInternal(const char *path, uint64_t *total,
+                                       const SizeDirectoryAncestor *ancestors) {
+  DIR *dir = opendir(path);
+  if (dir == NULL) return false;
+
+  struct stat directory_stat;
+  if (fstat(dirfd(dir), &directory_stat) != 0) {
+    const int error = errno;
+    closedir(dir);
+    errno = error;
+    return false;
+  }
+  for (const SizeDirectoryAncestor *ancestor = ancestors; ancestor != NULL;
+       ancestor = ancestor->parent) {
+    if (directory_stat.st_dev == ancestor->device &&
+        directory_stat.st_ino == ancestor->inode) {
+      closedir(dir);
+      errno = ELOOP;
+      return false;
+    }
+  }
+  const SizeDirectoryAncestor current_ancestor = {
+      directory_stat.st_dev, directory_stat.st_ino, ancestors};
+
+  uint64_t directory_total = 0;
   char fullPath[1024];
-  while ((entry = readdir(dir)) != NULL) {
+  for (;;) {
+    errno = 0;
+    struct dirent *entry = readdir(dir);
+    if (entry == NULL) {
+      int error = errno;
+      if (closedir(dir) != 0 && error == 0) error = errno;
+      if (error != 0) {
+        errno = error;
+        return false;
+      }
+      *total = directory_total;
+      return true;
+    }
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
 
-    snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
-    struct stat st;
-    if (stat(fullPath, &st) != 0)
-      continue;
-    if (S_ISDIR(st.st_mode))
-      total += static_cast<long>(calculateTotalSize(fullPath));
-    else if (S_ISREG(st.st_mode))
-      total += st.st_size;
-  }
+    const int path_length = snprintf(fullPath, sizeof(fullPath), "%s/%s", path,
+                                     entry->d_name);
+    if (path_length < 0 || static_cast<size_t>(path_length) >= sizeof(fullPath)) {
+      closedir(dir);
+      errno = ENAMETOOLONG;
+      return false;
+    }
 
-  closedir(dir);
-  return static_cast<uint64_t>(total);
+    struct stat st;
+    if (stat(fullPath, &st) != 0) {
+      const int error = errno;
+      closedir(dir);
+      errno = error;
+      return false;
+    }
+
+    uint64_t entry_size = 0;
+    if (S_ISDIR(st.st_mode)) {
+      if (!calculateTotalSizeInternal(fullPath, &entry_size,
+                                      &current_ancestor)) {
+        const int error = errno;
+        closedir(dir);
+        errno = error;
+        return false;
+      }
+    } else if (S_ISREG(st.st_mode)) {
+      if (st.st_size < 0) {
+        closedir(dir);
+        errno = EOVERFLOW;
+        return false;
+      }
+      entry_size = static_cast<uint64_t>(st.st_size);
+    }
+
+    if (UINT64_MAX - directory_total < entry_size) {
+      closedir(dir);
+      errno = EOVERFLOW;
+      return false;
+    }
+    directory_total += entry_size;
+  }
+}
+
+bool calculateTotalSize(const char *path, uint64_t *total) {
+  if (total == NULL) {
+    errno = EINVAL;
+    onion_notify(false, "notify.fs.size_failed", path);
+    return false;
+  }
+  uint64_t result = 0;
+  if (!calculateTotalSizeInternal(path, &result, NULL)) {
+    onion_notify(false, "notify.fs.size_failed", path);
+    return false;
+  }
+  *total = result;
+  return true;
 }
 
 static const char *sizes[] = {"EiB", "PiB", "TiB", "GiB", "MiB", "KiB", "B"};
