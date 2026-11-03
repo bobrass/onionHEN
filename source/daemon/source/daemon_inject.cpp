@@ -263,8 +263,15 @@ void *toolbox_rest_worker(void *arg) {
       usleep(kRestRetryDelayUs[attempt]);
     }
   }
-  LOG_WARN("rest: toolbox recovery exhausted gen=%u requested_pid=%d", job.gen,
-           static_cast<int>(job.exec_pid));
+  if (g_rest_gen.load(std::memory_order_acquire) != job.gen) {
+    LOG_DEBUG("rest: toolbox recovery worker superseded gen=%u latest_gen=%u "
+              "requested_pid=%d",
+              job.gen, g_rest_gen.load(std::memory_order_relaxed),
+              static_cast<int>(job.exec_pid));
+  } else {
+    LOG_WARN("rest: toolbox recovery exhausted gen=%u requested_pid=%d",
+             job.gen, static_cast<int>(job.exec_pid));
+  }
   return nullptr;
 }
 
