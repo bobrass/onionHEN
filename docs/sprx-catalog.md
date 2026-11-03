@@ -4,6 +4,9 @@
 project's existing `config.ini` conventions and the reference `ploader.ini`
 without introducing another parser or a nested JSON schema.
 
+The manifest is optional. If it does not exist yet, OnionHEN treats the SPRX
+catalog as empty; other file-open and read errors are still reported.
+
 ```ini
 [plugin.base-runtime]
 path=/data/OnionHEN/sprx/base-runtime.sprx
