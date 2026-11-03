@@ -249,6 +249,17 @@ bool IPC_Client::IPCSendCommand(DaemonCommands cmd, std::string &ipc_msg1,
     json = std::move(ipc_msg2);
   }
 
+  if (json.empty()) {
+    LOG_ERROR("Failed to serialize IPC request for command 0x%X",
+              static_cast<unsigned>(cmd));
+    return false;
+  }
+  if (json.size() >= sizeof(msg.msg)) {
+    LOG_ERROR("IPC request for command 0x%X is too large (%zu bytes; max %zu)",
+              static_cast<unsigned>(cmd), json.size(), sizeof(msg.msg) - 1);
+    return false;
+  }
+
   if (!IPCOpenIfNotConnected()) {
     LOG_ERROR("Failed to open connection to daemon");
     return false;
