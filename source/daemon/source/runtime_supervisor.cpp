@@ -64,10 +64,35 @@ pid_t read_pid_marker(const char *path) {
     return -1;
 
   char buf[32] = {};
-  const ssize_t n = read(fd, buf, sizeof(buf) - 1);
-  close(fd);
-  if (n <= 0)
+  size_t used = 0;
+  bool read_ok = true;
+  while (used < sizeof(buf) - 1) {
+    const ssize_t count = read(fd, buf + used, sizeof(buf) - 1 - used);
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count < 0) {
+      read_ok = false;
+      break;
+    }
+    if (count == 0)
+      break;
+    used += static_cast<size_t>(count);
+  }
+
+  if (read_ok && used == sizeof(buf) - 1) {
+    char extra;
+    ssize_t count;
+    do {
+      count = read(fd, &extra, sizeof(extra));
+    } while (count < 0 && errno == EINTR);
+    if (count != 0)
+      read_ok = false;
+  }
+  if (close(fd) != 0)
+    read_ok = false;
+  if (!read_ok || used == 0 || used == sizeof(buf) - 1)
     return -1;
+  buf[used] = '\0';
 
   char *end = nullptr;
   errno = 0;
