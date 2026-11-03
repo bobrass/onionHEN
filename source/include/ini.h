@@ -43,18 +43,17 @@ typedef struct {
 #include <fcntl.h>
 
 static inline void trim(char* str) {
-    char* end = 0;
-    // Trim leading space
-    while (isspace((unsigned char)*str)) str++;
+    char* start = str;
+    while (isspace((unsigned char)*start)) start++;
 
-    // Trim trailing space
-    if (*str == 0) return;
+    char* end = start + strlen(start);
+    while (end > start && isspace((unsigned char)*(end - 1))) end--;
 
-    end = str + strlen(str) - 1;
-    while (end > str && isspace((unsigned char)*end)) end--;
-
-    // Write new null terminator
-    *(end + 1) = 0;
+    const size_t length = (size_t)(end - start);
+    if (start != str && length > 0) {
+        memmove(str, start, length);
+    }
+    str[length] = '\0';
 }
 static inline char* my_strchr(const char* str, int c) {
     while (*str != '\0') {
@@ -66,6 +65,10 @@ static inline char* my_strchr(const char* str, int c) {
     return NULL;
 }
 static inline int ini_parser_load(IniParser* parser, const char* filename) {
+    if (parser == NULL || filename == NULL) {
+        return 0;
+    }
+
     int fd = open(filename, O_RDONLY, 0);
     if (fd < 0) {
         return 0;
@@ -88,7 +91,8 @@ static inline int ini_parser_load(IniParser* parser, const char* filename) {
         while ((lineEnd = my_strchr(line, '\n')) != NULL) {
             *lineEnd = '\0';
             char trimmedLine[MAX_LINE];
-            strncpy(trimmedLine, line, MAX_LINE);
+            strncpy(trimmedLine, line, sizeof(trimmedLine) - 1);
+            trimmedLine[sizeof(trimmedLine) - 1] = '\0';
             trim(trimmedLine);
 
             if (trimmedLine[0] == ';' || trimmedLine[0] == '#' || trimmedLine[0] == '\0') {
@@ -96,8 +100,13 @@ static inline int ini_parser_load(IniParser* parser, const char* filename) {
             }
             else if (trimmedLine[0] == '[' && trimmedLine[strlen(trimmedLine) - 1] == ']') {
                 // Section header
-                strncpy(section, trimmedLine + 1, strlen(trimmedLine) - 2);
-                section[strlen(trimmedLine) - 2] = '\0';
+                const size_t sectionLength = strlen(trimmedLine) - 2;
+                if (sectionLength >= sizeof(section)) {
+                    line = lineEnd + 1;
+                    continue;
+                }
+                memcpy(section, trimmedLine + 1, sectionLength);
+                section[sectionLength] = '\0';
                 trim(section);
             }
             else {
@@ -106,7 +115,12 @@ static inline int ini_parser_load(IniParser* parser, const char* filename) {
                 if (delimiter) {
                     *delimiter = '\0';
                     char key[MAX_LINE];
-                    sprintf(key, "%s.%s", section, trimmedLine);
+                    const int keyLength = snprintf(key, sizeof(key), "%s.%s",
+                                                   section, trimmedLine);
+                    if (keyLength < 0 || (size_t)keyLength >= sizeof(key)) {
+                        line = lineEnd + 1;
+                        continue;
+                    }
                     trim(key);
                     char* value = delimiter + 1;
                     trim(value);
@@ -124,6 +138,11 @@ static inline int ini_parser_load(IniParser* parser, const char* filename) {
 
         bufferIndex = strlen(line);
         memmove(buffer, line, bufferIndex);
+        if (bufferIndex == sizeof(buffer) - 1) {
+            close(fd);
+            parser->count = 0;
+            return 0;
+        }
     }
 
     close(fd);
