@@ -59,6 +59,40 @@ static bool is_real_directory_path(const char *path) {
   return true;
 }
 
+static bool validate_rmtree_target(const char *path) {
+  if (!path || !path[0]) {
+    errno = EINVAL;
+    return false;
+  }
+
+  bool has_component = false;
+  const char *component = path;
+  while (*component) {
+    while (*component == '/')
+      ++component;
+    if (!*component)
+      break;
+
+    const char *end = component;
+    while (*end && *end != '/')
+      ++end;
+    const size_t length = (size_t)(end - component);
+    if ((length == 1 && component[0] == '.') ||
+        (length == 2 && component[0] == '.' && component[1] == '.')) {
+      errno = EINVAL;
+      return false;
+    }
+    has_component = true;
+    component = end;
+  }
+
+  if (!has_component) {
+    errno = EBUSY;
+    return false;
+  }
+  return true;
+}
+
 bool if_exists(const char *path) {
   struct stat buffer;
   if (!path) {
@@ -329,6 +363,11 @@ static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
 }
 
 bool rmtree(const char *path) {
+  if (!validate_rmtree_target(path)) {
+    LOG_ERROR("Refusing unsafe recursive-delete path: %s",
+              path ? path : "(null)");
+    return false;
+  }
   return rmtree_impl(path, NULL, NULL, NULL, 0);
 }
 
@@ -336,7 +375,9 @@ bool rmtree_with_progress(const char *path, onion_fs_progress_fn progress,
                           void *user) {
   size_t completed = 0;
   size_t total;
-  if (path == NULL) {
+  if (!validate_rmtree_target(path)) {
+    LOG_ERROR("Refusing unsafe recursive-delete path: %s",
+              path ? path : "(null)");
     return false;
   }
   if (!count_tree_entries(path, &total)) {

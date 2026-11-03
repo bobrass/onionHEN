@@ -29,13 +29,19 @@ bool write_file_atomic(const char *path, const void *data, size_t size);
 /** Create path and any missing parents (mode 0777). True if the directory exists. */
 bool mkdir_tree(const char *path);
 
-/** Recursively delete directory tree at path. */
+/**
+ * Recursively delete directory tree at path. Refuses filesystem-root and
+ * dot-component targets ("." or "..").
+ */
 bool rmtree(const char *path);
 
 typedef void (*onion_fs_progress_fn)(size_t completed, size_t total,
                                      void *user);
 
-/** Recursively delete a tree and report completed entries, including dirs. */
+/**
+ * Recursively delete a tree and report completed entries, including dirs.
+ * Applies the same path guards as rmtree().
+ */
 bool rmtree_with_progress(const char *path, onion_fs_progress_fn progress,
                           void *user);
 
