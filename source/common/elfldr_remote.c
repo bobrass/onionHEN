@@ -37,14 +37,9 @@ static int connect_port(uint16_t port) {
   addr.sin_addr.s_addr = htonl(0x7f000001);
 
   const int flags = fcntl(fd, F_GETFL, 0);
-  const int nonblock_ok =
-      flags >= 0 && fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
-  if (!nonblock_ok) {
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-      close(fd);
-      return -1;
-    }
-    return fd;
+  if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0) {
+    close(fd);
+    return -1;
   }
 
   const int rc = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
@@ -69,7 +64,10 @@ static int connect_port(uint16_t port) {
     }
   }
 
-  (void)fcntl(fd, F_SETFL, flags);
+  if (fcntl(fd, F_SETFL, flags) != 0) {
+    close(fd);
+    return -1;
+  }
   return fd;
 }
 
