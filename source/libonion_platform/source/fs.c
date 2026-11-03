@@ -102,19 +102,46 @@ bool if_exists(const char *path) {
 }
 
 bool touch_file(const char *path) {
-  if (!path) {
+  if (!path || path[0] == '\0') {
+    errno = EINVAL;
     return false;
   }
-  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0777);
-  if (fd >= 0) {
-    if (close(fd) == 0)
-      return true;
+  const int fd = open(path, O_WRONLY | O_CREAT | O_NONBLOCK | O_NOFOLLOW, 0777);
+  if (fd < 0) {
+    LOG_ERROR("touch_file: open %s failed (%s)", path, strerror(errno));
+    return false;
+  }
+
+  struct stat st;
+  if (fstat(fd, &st) != 0) {
+    const int saved_errno = errno;
+    close(fd);
+    LOG_ERROR("touch_file: stat %s failed (%s)", path, strerror(saved_errno));
+    errno = saved_errno;
+    return false;
+  }
+  if (!S_ISREG(st.st_mode)) {
+    close(fd);
+    LOG_ERROR("touch_file: refusing non-regular file %s", path);
+    errno = EINVAL;
+    return false;
+  }
+  if (ftruncate(fd, 0) != 0) {
+    const int saved_errno = errno;
+    close(fd);
+    LOG_ERROR("touch_file: truncate %s failed (%s)", path,
+              strerror(saved_errno));
+    errno = saved_errno;
+    return false;
+  }
+  if (close(fd) != 0) {
     const int saved_errno = errno;
     LOG_ERROR("touch_file: close %s failed (%s)", path,
               strerror(saved_errno));
     errno = saved_errno;
+    return false;
   }
-  return false;
+  return true;
 }
 
 bool write_file_atomic(const char *path, const void *data, size_t size) {

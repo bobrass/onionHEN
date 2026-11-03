@@ -16,7 +16,9 @@ extern "C" {
 /** True if path exists (stat succeeds). */
 bool if_exists(const char *path);
 
-/** Create or truncate empty file at path (mode 0777). */
+/**
+ * Create or truncate a regular file at path (mode 0777); refuses symlinks.
+ */
 bool touch_file(const char *path);
 
 /**
