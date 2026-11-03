@@ -37,7 +37,23 @@ static inline bool onion_system_tmp_pid_path(char *out, size_t out_sz,
   if (!out || out_sz == 0) {
     return false;
   }
-  int n = snprintf(out, out_sz, "%s/%s.PID", ONION_SYSTEM_TMP_PID_ROOT,
-                   key ? key : "");
-  return n > 0 && (size_t)n < out_sz;
+  out[0] = '\0';
+  if (!key || !key[0] || (key[0] == '.' &&
+                          (key[1] == '\0' ||
+                           (key[1] == '.' && key[2] == '\0')))) {
+    return false;
+  }
+  for (const unsigned char *p = (const unsigned char *)key; *p; ++p) {
+    if (*p == '/' || *p == '\\' || *p < 0x20 || *p == 0x7f) {
+      return false;
+    }
+  }
+
+  const int n = snprintf(out, out_sz, "%s/%s.PID", ONION_SYSTEM_TMP_PID_ROOT,
+                         key);
+  if (n <= 0 || (size_t)n >= out_sz) {
+    out[0] = '\0';
+    return false;
+  }
+  return true;
 }

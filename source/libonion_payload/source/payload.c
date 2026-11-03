@@ -32,6 +32,17 @@ bool onion_payload_is_elf(const void *buf, size_t size) {
   return memcmp(buf, kMagic, 4) == 0;
 }
 
+static bool valid_payload_key(const char *title_id) {
+  if (!title_id || !title_id[0] || strcmp(title_id, ".") == 0 ||
+      strcmp(title_id, "..") == 0 || strlen(title_id) >= 64)
+    return false;
+  for (const unsigned char *p = (const unsigned char *)title_id; *p; ++p) {
+    if (*p == '/' || *p == '\\' || *p < 0x20 || *p == 0x7f)
+      return false;
+  }
+  return true;
+}
+
 bool onion_payload_elf_key_from_name(const char *name, char *out, size_t out_sz) {
   if (!name || !out || out_sz < 2)
     return false;
@@ -55,6 +66,11 @@ bool onion_payload_elf_key_from_name(const char *name, char *out, size_t out_sz)
 }
 
 void onion_payload_pid_path(char *out, size_t out_sz, const char *title_id) {
+  if (!out || out_sz == 0)
+    return;
+  out[0] = '\0';
+  if (!valid_payload_key(title_id))
+    return;
   (void)onion_system_tmp_pid_path(out, out_sz, title_id);
 }
 
@@ -125,7 +141,7 @@ void onion_payload_write_pid_file(const char *pid_path, pid_t pid) {
 }
 
 bool onion_payload_running(const char *title_id) {
-  if (!title_id || !title_id[0])
+  if (!valid_payload_key(title_id))
     return false;
   char path[256];
   onion_payload_pid_path(path, sizeof(path), title_id);
@@ -144,12 +160,6 @@ bool onion_payload_running(const char *title_id) {
     return false;
   }
   return true;
-}
-
-static bool valid_payload_key(const char *title_id) {
-  return title_id && title_id[0] && strcmp(title_id, ".") != 0 &&
-         strcmp(title_id, "..") != 0 && strlen(title_id) < 64 &&
-         strchr(title_id, '/') == NULL && strchr(title_id, '\\') == NULL;
 }
 
 static pid_t launch_user_payload(const char *title_id, const char *abs_path) {
