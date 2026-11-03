@@ -32,6 +32,42 @@ std::string pid_path(std::string_view plugin_id) {
   return path;
 }
 
+bool write_pid_marker_atomically(const std::string &path, const char *value,
+                                 size_t length) {
+  char temporary[320]{};
+  const int path_length =
+      std::snprintf(temporary, sizeof(temporary), "%s.tmp.XXXXXX", path.c_str());
+  if (path_length < 0 || static_cast<size_t>(path_length) >= sizeof(temporary)) {
+    errno = ENAMETOOLONG;
+    return false;
+  }
+
+  const int descriptor = ::mkstemp(temporary);
+  if (descriptor < 0) return false;
+
+  size_t offset = 0;
+  int failure_errno = 0;
+  while (offset < length) {
+    const ssize_t written = write(descriptor, value + offset, length - offset);
+    if (written < 0 && errno == EINTR) continue;
+    if (written <= 0) {
+      failure_errno = written < 0 ? errno : EIO;
+      break;
+    }
+    offset += static_cast<size_t>(written);
+  }
+  if (failure_errno == 0 && fsync(descriptor) != 0) failure_errno = errno;
+  if (close(descriptor) != 0 && failure_errno == 0) failure_errno = errno;
+  if (failure_errno == 0 && std::rename(temporary, path.c_str()) != 0)
+    failure_errno = errno;
+  if (failure_errno != 0) {
+    unlink(temporary);
+    errno = failure_errno;
+    return false;
+  }
+  return true;
+}
+
 class DaemonRuntime final : public plugin::ProcessRuntime {
 public:
   pid_t recover(std::string_view plugin_id) override {
@@ -130,25 +166,19 @@ public:
     }
     mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
     mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
-    const int descriptor = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (descriptor < 0) return;
     char value[64]{};
     const int length = std::snprintf(value, sizeof(value), "%d %llu\n", pid,
                                      static_cast<unsigned long long>(generation));
-    bool write_ok = length > 0 && static_cast<size_t>(length) < sizeof(value);
-    size_t offset = 0;
-    while (write_ok && offset < static_cast<size_t>(length)) {
-      const ssize_t written =
-          write(descriptor, value + offset, static_cast<size_t>(length) - offset);
-      if (written < 0 && errno == EINTR) continue;
-      if (written <= 0) {
-        write_ok = false;
-        break;
-      }
-      offset += static_cast<size_t>(written);
+    if (length <= 0 || static_cast<size_t>(length) >= sizeof(value)) {
+      errno = EOVERFLOW;
+      LOG_WARN("[plugins] cannot format runtime marker for %s",
+               std::string(plugin_id).c_str());
+      return;
     }
-    const bool close_ok = close(descriptor) == 0;
-    if (!write_ok || !close_ok) unlink(path.c_str());
+    if (!write_pid_marker_atomically(path, value, static_cast<size_t>(length))) {
+      LOG_WARN("[plugins] runtime marker write failed for %s: %s",
+               std::string(plugin_id).c_str(), strerror(errno));
+    }
   }
 
   void stop(pid_t pid, uint32_t flags) override {
