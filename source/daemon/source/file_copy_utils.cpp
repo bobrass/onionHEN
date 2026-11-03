@@ -16,11 +16,47 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-uint64_t calculateTotalSize(const char *path) {
+struct DirectoryIdentityStack {
+  dev_t devices[PATH_MAX];
+  ino_t inodes[PATH_MAX];
+};
+
+static bool push_directory_identity(DIR *dir, DirectoryIdentityStack *stack,
+                                    size_t depth) {
+  if (depth >= PATH_MAX) {
+    errno = ELOOP;
+    return false;
+  }
+
+  struct stat info;
+  if (fstat(dirfd(dir), &info) != 0)
+    return false;
+  for (size_t index = 0; index < depth; ++index) {
+    if (stack->devices[index] == info.st_dev &&
+        stack->inodes[index] == info.st_ino) {
+      errno = ELOOP;
+      return false;
+    }
+  }
+  stack->devices[depth] = info.st_dev;
+  stack->inodes[depth] = info.st_ino;
+  return true;
+}
+
+static uint64_t calculate_total_size(const char *path,
+                                    DirectoryIdentityStack *stack,
+                                    size_t depth) {
   long total = 0;
   DIR *dir = opendir(path);
   if (dir == NULL) {
     onion_notify(false, "notify.fs.size_failed", path);
+    return 0;
+  }
+  if (!push_directory_identity(dir, stack, depth)) {
+    const int identity_error = errno;
+    closedir(dir);
+    LOG_WARN("skipping recursive directory while calculating size %s: %s",
+             path, strerror(identity_error));
     return 0;
   }
 
@@ -35,13 +71,19 @@ uint64_t calculateTotalSize(const char *path) {
     if (stat(fullPath, &st) != 0)
       continue;
     if (S_ISDIR(st.st_mode))
-      total += static_cast<long>(calculateTotalSize(fullPath));
+      total += static_cast<long>(
+          calculate_total_size(fullPath, stack, depth + 1));
     else if (S_ISREG(st.st_mode))
       total += st.st_size;
   }
 
   closedir(dir);
   return static_cast<uint64_t>(total);
+}
+
+uint64_t calculateTotalSize(const char *path) {
+  DirectoryIdentityStack stack = {};
+  return calculate_total_size(path, &stack, 0);
 }
 
 static const char *sizes[] = {"EiB", "PiB", "TiB", "GiB", "MiB", "KiB", "B"};
@@ -180,7 +222,8 @@ static bool is_same_or_child_path(const char *parent, const char *candidate) {
          candidate[parent_length] == '/';
 }
 
-bool copyRecursive(const char *source, const char *destination) {
+static bool copy_recursive_impl(const char *source, const char *destination,
+                                DirectoryIdentityStack *stack, size_t depth) {
   DIR *dir = opendir(source);
   if (dir == NULL) {
     const int open_error = errno;
@@ -188,6 +231,15 @@ bool copyRecursive(const char *source, const char *destination) {
     LOG_ERROR("copyRecursive failed to open %s: %s", source,
               strerror(open_error));
     errno = open_error;
+    return false;
+  }
+  if (!push_directory_identity(dir, stack, depth)) {
+    const int identity_error = errno;
+    closedir(dir);
+    onion_notify(false, "notify.fs.copy_recursive", source);
+    LOG_ERROR("copyRecursive detected a directory cycle at %s: %s", source,
+              strerror(identity_error));
+    errno = identity_error;
     return false;
   }
 
@@ -293,7 +345,7 @@ bool copyRecursive(const char *source, const char *destination) {
       continue;
     }
     if (S_ISDIR(st.st_mode)) {
-      if (!copyRecursive(srcPath, destPath)) {
+      if (!copy_recursive_impl(srcPath, destPath, stack, depth + 1)) {
         success = false;
         if (copy_error == 0)
           copy_error = errno != 0 ? errno : EIO;
@@ -321,4 +373,9 @@ bool copyRecursive(const char *source, const char *destination) {
   onion_notify(false, "notify.fs.copy_recursive", source);
   errno = copy_error;
   return false;
+}
+
+bool copyRecursive(const char *source, const char *destination) {
+  DirectoryIdentityStack stack = {};
+  return copy_recursive_impl(source, destination, &stack, 0);
 }
