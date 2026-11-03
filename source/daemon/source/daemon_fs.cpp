@@ -99,8 +99,20 @@ int change_permissions_recursive(const char* path) {
         return -1;
     }
 
-    errno = 0;
-    while ((entry = readdir(dir)) != NULL) {
+    for (;;) {
+        errno = 0;
+        entry = readdir(dir);
+        if (entry == NULL) {
+            if (errno == EINTR)
+                continue;
+            if (errno != 0) {
+                LOG_ERROR("Error reading directory '%s': %s", path,
+                          strerror(errno));
+                result = -1;
+            }
+            break;
+        }
+
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
 
@@ -126,12 +138,10 @@ int change_permissions_recursive(const char* path) {
         }
     }
 
-    if (errno != 0) {
-        LOG_ERROR( "Error reading directory '%s': %s", path, strerror(errno));
+    if (closedir(dir) != 0) {
+        LOG_ERROR("Failed to close directory '%s': %s", path, strerror(errno));
         result = -1;
     }
-
-    closedir(dir);
 
     if (chmod(path, 0777) != 0) {
         LOG_ERROR( "Failed to chmod directory '%s': %s", path, strerror(errno));
