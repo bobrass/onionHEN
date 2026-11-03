@@ -42,6 +42,12 @@ int mapCodeCaveCommon(pid_t pid, uint64_t addr, size_t len) {
   if (mapped != static_cast<intptr_t>(page_start)) {
     LOG_ERROR("[Cheat] code cave mmap failed page=0x%llx ret=0x%llx",
                  (unsigned long long)page_start, (unsigned long long)mapped);
+    if (mapped > 0 &&
+        static_cast<uint64_t>(mapped) % kPageSize == 0 &&
+        pt_munmap(pid, mapped, page_len) != 0) {
+      LOG_ERROR("[Cheat] code cave mmap rollback failed addr=0x%llx",
+                (unsigned long long)mapped);
+    }
     pt_detach_proc(pid, 0);
     return -1;
   }
@@ -50,6 +56,10 @@ int mapCodeCaveCommon(pid_t pid, uint64_t addr, size_t len) {
                       PROT_READ | PROT_WRITE | PROT_EXEC) < 0) {
     LOG_ERROR("[Cheat] code cave mprotect failed page=0x%llx",
                  (unsigned long long)page_start);
+    if (pt_munmap(pid, mapped, page_len) != 0) {
+      LOG_ERROR("[Cheat] code cave mprotect rollback failed page=0x%llx",
+                (unsigned long long)page_start);
+    }
     pt_detach_proc(pid, 0);
     return -1;
   }
