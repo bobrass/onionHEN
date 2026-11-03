@@ -12,17 +12,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static bool is_directory_entry(const char *path, unsigned char type) {
-  struct stat st;
-  if (type == DT_DIR) {
-    return true;
-  }
-  if (type != DT_UNKNOWN || lstat(path, &st) != 0) {
-    return false;
-  }
-  return S_ISDIR(st.st_mode);
-}
-
 bool if_exists(const char *path) {
   struct stat buffer;
   if (!path) {
@@ -126,25 +115,77 @@ bool mkdir_tree(const char *path) {
 }
 
 static size_t count_tree_entries(const char *path) {
-  DIR *dir = opendir(path);
   size_t count = 1; /* The directory itself. */
   struct dirent *entry;
+  struct stat path_stat;
+
+  if (lstat(path, &path_stat) != 0 || !S_ISDIR(path_stat.st_mode))
+    return count;
+
+  DIR *dir = opendir(path);
 
   if (dir == NULL) {
+    LOG_WARN("Could not open directory while counting %s: %s", path,
+             strerror(errno));
     return count;
   }
-  while ((entry = readdir(dir)) != NULL) {
+  for (;;) {
+    errno = 0;
+    entry = readdir(dir);
+    if (entry == NULL) {
+      if (errno == EINTR)
+        continue;
+      if (errno != 0)
+        LOG_WARN("Could not finish counting directory %s: %s", path,
+                 strerror(errno));
+      break;
+    }
     char child[1024];
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
       continue;
     }
-    snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
-    count += is_directory_entry(child, entry->d_type)
-                 ? count_tree_entries(child)
-                 : 1;
+    const int child_length =
+        snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+    if (child_length < 0 || (size_t)child_length >= sizeof(child)) {
+      LOG_WARN("Skipping overlong path while counting %s/%s", path,
+               entry->d_name);
+      continue;
+    }
+
+    struct stat child_stat;
+    if (lstat(child, &child_stat) != 0) {
+      LOG_WARN("Could not stat path while counting %s: %s", child,
+               strerror(errno));
+      continue;
+    }
+    const size_t child_count = S_ISDIR(child_stat.st_mode)
+                                   ? count_tree_entries(child)
+                                   : 1;
+    if (child_count > SIZE_MAX - count) {
+      count = SIZE_MAX;
+      LOG_WARN("Directory entry count saturated while counting %s", path);
+    } else {
+      count += child_count;
+    }
   }
-  closedir(dir);
+  if (closedir(dir) != 0)
+    LOG_WARN("Could not close directory while counting %s: %s", path,
+             strerror(errno));
   return count;
+}
+
+static void remember_delete_error(int *first_error, int error) {
+  if (*first_error == 0)
+    *first_error = error != 0 ? error : EIO;
+}
+
+static void report_delete_progress(onion_fs_progress_fn progress, void *user,
+                                   size_t *completed, size_t total) {
+  if (completed == NULL)
+    return;
+  ++(*completed);
+  if (progress != NULL)
+    progress(*completed, total, user);
 }
 
 static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
@@ -153,46 +194,119 @@ static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
     return false;
   }
 
-  DIR *dir = opendir(path);
-  if (dir == NULL) {
-    LOG_ERROR("Error opening directory %s", path);
+  struct stat path_stat;
+  if (lstat(path, &path_stat) != 0) {
+    const int stat_error = errno;
+    LOG_ERROR("Error inspecting path %s: %s", path, strerror(stat_error));
+    errno = stat_error;
+    return false;
+  }
+  if (S_ISLNK(path_stat.st_mode)) {
+    if (unlink(path) != 0) {
+      const int unlink_error = errno;
+      LOG_ERROR("Error deleting symbolic link %s: %s", path,
+                strerror(unlink_error));
+      errno = unlink_error;
+      return false;
+    }
+    report_delete_progress(progress, user, completed, total);
+    return true;
+  }
+  if (!S_ISDIR(path_stat.st_mode)) {
+    errno = ENOTDIR;
+    LOG_ERROR("Refusing to recursively delete non-directory path %s", path);
     return false;
   }
 
+  DIR *dir = opendir(path);
+  if (dir == NULL) {
+    const int open_error = errno;
+    LOG_ERROR("Error opening directory %s: %s", path, strerror(open_error));
+    errno = open_error;
+    return false;
+  }
+
+  struct stat opened_stat;
+  errno = 0;
+  if (fstat(dirfd(dir), &opened_stat) != 0 ||
+      opened_stat.st_dev != path_stat.st_dev ||
+      opened_stat.st_ino != path_stat.st_ino) {
+    const int identity_error = errno != 0 ? errno : EAGAIN;
+    closedir(dir);
+    LOG_ERROR("Directory changed while preparing to delete %s: %s", path,
+              strerror(identity_error));
+    errno = identity_error;
+    return false;
+  }
+
+  bool success = true;
+  int first_error = 0;
   struct dirent *entry;
-  while ((entry = readdir(dir)) != NULL) {
-    bool is_directory;
+  for (;;) {
+    errno = 0;
+    entry = readdir(dir);
+    if (entry == NULL) {
+      if (errno == EINTR)
+        continue;
+      if (errno != 0) {
+        success = false;
+        remember_delete_error(&first_error, errno);
+        LOG_ERROR("Error reading directory %s: %s", path, strerror(errno));
+      }
+      break;
+    }
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
       continue;
     }
 
     char child[1024];
-    snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
-    is_directory = is_directory_entry(child, entry->d_type);
-
-    if (is_directory) {
-      (void)rmtree_impl(child, progress, user, completed, total);
-    } else if (unlink(child) != 0) {
-      LOG_ERROR("Error deleting file %s", child);
+    const int child_length =
+        snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+    if (child_length < 0 || (size_t)child_length >= sizeof(child)) {
+      success = false;
+      remember_delete_error(&first_error, ENAMETOOLONG);
+      LOG_ERROR("Path is too long while deleting %s/%s", path, entry->d_name);
+      continue;
     }
-    if (!is_directory && completed != NULL) {
-      ++(*completed);
-      if (progress != NULL) {
-        progress(*completed, total, user);
+
+    struct stat child_stat;
+    if (lstat(child, &child_stat) != 0) {
+      success = false;
+      remember_delete_error(&first_error, errno);
+      LOG_ERROR("Error inspecting path %s: %s", child, strerror(errno));
+      continue;
+    }
+    if (S_ISDIR(child_stat.st_mode)) {
+      if (!rmtree_impl(child, progress, user, completed, total)) {
+        success = false;
+        remember_delete_error(&first_error, errno);
       }
+    } else if (unlink(child) != 0) {
+      success = false;
+      remember_delete_error(&first_error, errno);
+      LOG_ERROR("Error deleting path %s: %s", child, strerror(errno));
+    } else {
+      report_delete_progress(progress, user, completed, total);
     }
   }
 
-  closedir(dir);
+  errno = 0;
+  if (closedir(dir) != 0) {
+    success = false;
+    remember_delete_error(&first_error, errno);
+    LOG_ERROR("Error closing directory %s: %s", path, strerror(errno));
+  }
 
   if (rmdir(path) != 0) {
-    LOG_ERROR("Error deleting folder %s", path);
+    success = false;
+    remember_delete_error(&first_error, errno);
+    LOG_ERROR("Error deleting directory %s: %s", path, strerror(errno));
+  } else {
+    report_delete_progress(progress, user, completed, total);
   }
-  if (completed != NULL) {
-    ++(*completed);
-    if (progress != NULL) {
-      progress(*completed, total, user);
-    }
+  if (!success) {
+    errno = first_error;
+    return false;
   }
   return true;
 }
