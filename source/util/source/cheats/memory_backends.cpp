@@ -4,6 +4,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <limits>
 #include <sys/mman.h>
 
 #include <ps5/kernel.h>
@@ -21,14 +22,33 @@ constexpr uint64_t kPageSize = 0x4000ULL;
 inline uint64_t pageAlignDown(uint64_t v) {
   return v & ~(kPageSize - 1ULL);
 }
-inline uint64_t pageAlignUp(uint64_t v) {
-  return (v + kPageSize - 1ULL) & ~(kPageSize - 1ULL);
+bool pageAlignUp(uint64_t value, uint64_t &aligned) {
+  const uint64_t remainder = value & (kPageSize - 1ULL);
+  const uint64_t padding = remainder == 0 ? 0 : kPageSize - remainder;
+  if (value > std::numeric_limits<uint64_t>::max() - padding) {
+    return false;
+  }
+  aligned = value + padding;
+  return true;
 }
 
 int mapCodeCaveCommon(pid_t pid, uint64_t addr, size_t len) {
+  uint64_t page_end = 0;
+  if (len == 0 || addr > std::numeric_limits<uint64_t>::max() - len ||
+      !pageAlignUp(addr + len, page_end)) {
+    LOG_ERROR("[Cheat] code cave range overflows addr=0x%llx len=%zu",
+              (unsigned long long)addr, len);
+    return -1;
+  }
   const uint64_t page_start = pageAlignDown(addr);
-  const uint64_t page_end = pageAlignUp(addr + len);
-  const size_t page_len = static_cast<size_t>(page_end - page_start);
+  const uint64_t page_len_wide = page_end - page_start;
+  if (page_len_wide == 0 ||
+      page_len_wide > std::numeric_limits<size_t>::max()) {
+    LOG_ERROR("[Cheat] code cave mapping size is invalid addr=0x%llx len=%zu",
+              (unsigned long long)addr, len);
+    return -1;
+  }
+  const size_t page_len = static_cast<size_t>(page_len_wide);
 
   if (pt_attach_proc(pid) < 0) {
     LOG_ERROR("[Cheat] code cave attach failed pid=%d errno=%d", pid,
