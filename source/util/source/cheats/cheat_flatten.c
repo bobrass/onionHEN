@@ -500,13 +500,23 @@ static int visit_install_folder(const char *folder, int expected_rank,
   }
   directory = opendir(folder);
   if (directory == NULL) {
-    return ONION_CHEAT_FLATTEN_OK;
+    return errno == ENOENT ? ONION_CHEAT_FLATTEN_OK
+                           : ONION_CHEAT_FLATTEN_ERROR;
   }
-  while ((ent = readdir(directory)) != NULL) {
+  for (;;) {
     char path[512];
     struct stat st;
     int written;
 
+    errno = 0;
+    ent = readdir(directory);
+    if (ent == NULL) {
+      if (errno != 0) {
+        closedir(directory);
+        return ONION_CHEAT_FLATTEN_ERROR;
+      }
+      break;
+    }
     if (flatten_cancel_requested(should_cancel, cancel_user)) {
       if (cancelled != NULL) {
         *cancelled = 1;
@@ -519,9 +529,14 @@ static int visit_install_folder(const char *folder, int expected_rank,
     }
     written = snprintf(path, sizeof(path), "%s/%s", folder, ent->d_name);
     if (written < 0 || (size_t)written >= sizeof(path)) {
-      continue;
+      closedir(directory);
+      return ONION_CHEAT_FLATTEN_ERROR;
     }
-    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+    if (stat(path, &st) != 0) {
+      closedir(directory);
+      return ONION_CHEAT_FLATTEN_ERROR;
+    }
+    if (!S_ISREG(st.st_mode)) {
       continue;
     }
     if (on_file != NULL && on_file(path, ent->d_name, user) != 0) {
@@ -529,8 +544,8 @@ static int visit_install_folder(const char *folder, int expected_rank,
       return ONION_CHEAT_FLATTEN_ERROR;
     }
   }
-  closedir(directory);
-  return ONION_CHEAT_FLATTEN_OK;
+  return closedir(directory) == 0 ? ONION_CHEAT_FLATTEN_OK
+                                  : ONION_CHEAT_FLATTEN_ERROR;
 }
 
 static int count_install_file(const char *src, const char *name, void *user) {
