@@ -147,6 +147,18 @@ static bool build_child_path(char *child, size_t child_size,
 }
 
 static bool count_tree_entries(const char *path, size_t *count) {
+  struct stat path_stat;
+  if (lstat(path, &path_stat) != 0) {
+    return false;
+  }
+  if (S_ISLNK(path_stat.st_mode)) {
+    *count = 1;
+    return true;
+  }
+  if (!S_ISDIR(path_stat.st_mode)) {
+    return false;
+  }
+
   DIR *dir = opendir(path);
   size_t total = 1; /* The directory itself. */
   struct dirent *entry;
@@ -191,7 +203,29 @@ static bool count_tree_entries(const char *path, size_t *count) {
 
 static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
                         void *user, size_t *completed, size_t total) {
+  struct stat path_stat;
   if (!path) {
+    return false;
+  }
+  if (lstat(path, &path_stat) != 0) {
+    LOG_ERROR("Error inspecting path %s", path);
+    return false;
+  }
+  if (S_ISLNK(path_stat.st_mode)) {
+    if (unlink(path) != 0) {
+      LOG_ERROR("Error deleting symlink %s", path);
+      return false;
+    }
+    if (completed != NULL) {
+      ++(*completed);
+      if (progress != NULL) {
+        progress(*completed, total, user);
+      }
+    }
+    return true;
+  }
+  if (!S_ISDIR(path_stat.st_mode)) {
+    LOG_ERROR("Refusing to recursively delete non-directory %s", path);
     return false;
   }
 
