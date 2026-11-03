@@ -78,9 +78,9 @@ std::vector<Entry> scan(const std::string &usb_prefix,
     if (device_found)
       *device_found = true;
     for (;;) {
-      errno = 0;
       dirent *item = nullptr;
       do {
+        errno = 0;
         item = readdir(dir);
       } while (!item && errno == EINTR);
       if (!item) {
