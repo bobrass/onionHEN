@@ -72,6 +72,7 @@
     "usb_payloads.link.sub": "Explorar e importar payloads ELF desde dispositivos USB conectados",
     "usb_payloads.no_device": "No se encontró ningún dispositivo USB",
     "usb_payloads.no_elf": "No se encontraron payloads ELF",
+    "usb_payloads.scan_incomplete": "No se pudieron analizar por completo algunos dispositivos USB. Actualiza e inténtalo de nuevo.",
     "usb_payloads.installed": "Instalado",
     "usb_payloads.not_installed": "No instalado",
     "usb_payloads.import": "Importar",

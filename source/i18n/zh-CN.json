@@ -72,6 +72,7 @@
     "usb_payloads.link.sub": "浏览并导入已连接 USB 设备中的 ELF Payload",
     "usb_payloads.no_device": "未找到 USB 设备",
     "usb_payloads.no_elf": "未找到 ELF Payload",
+    "usb_payloads.scan_incomplete": "部分 USB 设备未能完整扫描。请刷新后重试。",
     "usb_payloads.installed": "已安装",
     "usb_payloads.not_installed": "未安装",
     "usb_payloads.import": "导入",

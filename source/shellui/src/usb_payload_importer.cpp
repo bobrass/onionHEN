@@ -39,10 +39,13 @@ bool is_regular(const std::string &path, struct stat *out = nullptr) {
 } // namespace
 
 std::vector<Entry> scan(const std::string &usb_prefix,
-                        const std::string &destination, bool *device_found) {
+                        const std::string &destination, bool *device_found,
+                        bool *scan_complete) {
   std::vector<Entry> entries;
   if (device_found)
     *device_found = false;
+  if (scan_complete)
+    *scan_complete = true;
   for (unsigned index = 0; index < 8; ++index) {
     std::string mount = usb_prefix + std::to_string(index);
     DIR *dir = opendir(mount.c_str());
@@ -54,7 +57,14 @@ std::vector<Entry> scan(const std::string &usb_prefix,
       continue;
     if (device_found)
       *device_found = true;
-    while (dirent *item = readdir(dir)) {
+    for (;;) {
+      errno = 0;
+      dirent *item = readdir(dir);
+      if (!item) {
+        if (errno != 0 && scan_complete)
+          *scan_complete = false;
+        break;
+      }
       const std::string name(item->d_name);
       if (!valid_name(name))
         continue;
@@ -71,7 +81,8 @@ std::vector<Entry> scan(const std::string &usb_prefix,
           lstat((destination + "/" + destination_name(name)).c_str(), &st) == 0;
       entries.push_back(std::move(entry));
     }
-    closedir(dir);
+    if (closedir(dir) != 0 && scan_complete)
+      *scan_complete = false;
   }
   std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b) {
     return a.usb_index != b.usb_index ? a.usb_index < b.usb_index

@@ -72,6 +72,7 @@
     "usb_payloads.link.sub": "接続された USB デバイスの ELF ペイロードを参照してインポートします",
     "usb_payloads.no_device": "USB デバイスが見つかりません",
     "usb_payloads.no_elf": "ELF ペイロードが見つかりません",
+    "usb_payloads.scan_incomplete": "一部の USB デバイスを完全にスキャンできませんでした。更新して再試行してください。",
     "usb_payloads.installed": "インストール済み",
     "usb_payloads.not_installed": "未インストール",
     "usb_payloads.import": "インポート",

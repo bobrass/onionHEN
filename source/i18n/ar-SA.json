@@ -72,6 +72,7 @@
     "usb_payloads.link.sub": "تصفح حمولات ELF واستيرادها من أجهزة USB المتصلة",
     "usb_payloads.no_device": "لم يتم العثور على جهاز USB",
     "usb_payloads.no_elf": "لم يتم العثور على حمولات ELF",
+    "usb_payloads.scan_incomplete": "تعذّر فحص بعض أجهزة USB بالكامل. حدّث القائمة وحاول مجددًا.",
     "usb_payloads.installed": "مثبّت",
     "usb_payloads.not_installed": "غير مثبّت",
     "usb_payloads.import": "استيراد",

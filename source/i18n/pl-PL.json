@@ -72,6 +72,7 @@
     "usb_payloads.link.sub": "Przeglądaj i importuj payloady ELF z podłączonych urządzeń USB",
     "usb_payloads.no_device": "Nie znaleziono urządzenia USB",
     "usb_payloads.no_elf": "Nie znaleziono payloadów ELF",
+    "usb_payloads.scan_incomplete": "Nie udało się w pełni przeskanować niektórych urządzeń USB. Odśwież i spróbuj ponownie.",
     "usb_payloads.installed": "Zainstalowano",
     "usb_payloads.not_installed": "Nie zainstalowano",
     "usb_payloads.import": "Importuj",

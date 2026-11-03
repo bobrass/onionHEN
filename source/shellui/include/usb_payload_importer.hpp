@@ -30,7 +30,8 @@ inline constexpr const char *kUsbPrefix = "/usb";
 inline constexpr const char *kDestination = "/user/data/OnionHEN/payloads";
 
 std::vector<Entry> scan(const std::string &usb_prefix,
-                        const std::string &destination, bool *device_found);
+                        const std::string &destination, bool *device_found,
+                        bool *scan_complete = nullptr);
 ImportResult import_payload(const Entry &entry, const std::string &destination,
                             bool replace);
 

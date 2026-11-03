@@ -31,11 +31,16 @@ std::string size_text(std::uint64_t bytes) {
 
 bool model(ps5ui::Node &root) {
   bool device_found = false;
+  bool scan_complete = true;
   entries = onion::shellui::usb_payloads::scan(
       onion::shellui::usb_payloads::kUsbPrefix,
-      onion::shellui::usb_payloads::kDestination, &device_found);
+      onion::shellui::usb_payloads::kDestination, &device_found,
+      &scan_complete);
   ps5ui::Page page("id_usb_payloads", toolbox_i18n::tr("usb_payloads.title"));
-  if (!device_found)
+  if (!scan_complete)
+    page.label("id_usb_payloads_empty",
+               toolbox_i18n::tr("usb_payloads.scan_incomplete"));
+  else if (!device_found)
     page.label("id_usb_payloads_empty",
                toolbox_i18n::tr("usb_payloads.no_device"));
   else if (entries.empty())

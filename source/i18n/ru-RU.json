@@ -72,6 +72,7 @@
     "usb_payloads.link.sub": "Просмотр и импорт ELF-пейлоадов с подключённых USB-устройств",
     "usb_payloads.no_device": "USB-устройство не найдено",
     "usb_payloads.no_elf": "ELF-пейлоады не найдены",
+    "usb_payloads.scan_incomplete": "Не удалось полностью просканировать некоторые USB-устройства. Обновите список и попробуйте снова.",
     "usb_payloads.installed": "Установлен",
     "usb_payloads.not_installed": "Не установлен",
     "usb_payloads.import": "Импортировать",

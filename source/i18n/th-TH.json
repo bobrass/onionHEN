@@ -72,6 +72,7 @@
     "usb_payloads.link.sub": "เรียกดูและนำเข้า Payload ELF จากอุปกรณ์ USB ที่เชื่อมต่อ",
     "usb_payloads.no_device": "ไม่พบอุปกรณ์ USB",
     "usb_payloads.no_elf": "ไม่พบ Payload ELF",
+    "usb_payloads.scan_incomplete": "สแกนอุปกรณ์ USB บางรายการไม่สมบูรณ์ โปรดรีเฟรชแล้วลองอีกครั้ง",
     "usb_payloads.installed": "ติดตั้งแล้ว",
     "usb_payloads.not_installed": "ยังไม่ได้ติดตั้ง",
     "usb_payloads.import": "นำเข้า",
