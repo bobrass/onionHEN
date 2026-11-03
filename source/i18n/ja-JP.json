@@ -53,6 +53,7 @@
     "pkg.custom.partial_inaccessible": "Some configured folders could not be opened.",
     "pkg.custom.empty": "No PKG files were found in these folders.",
     "pkg.custom.truncated": "The scan limit was reached. The package list may be incomplete; narrow the search folders to check more files.",
+    "pkg.custom.scan_incomplete": "一部のパッケージファイルを確認できませんでした。結果が不完全な可能性があります。",
     "pkg.custom.package_help": "Select to ask the system installer to install this package.",
     "pkg.msg.options": "PKG インストーラーのオプション",
     "pkg.msg.installing": "OnionHEN が選択した PKG をインストールしています",

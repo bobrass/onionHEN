@@ -53,6 +53,7 @@
     "pkg.custom.partial_inaccessible": "Some configured folders could not be opened.",
     "pkg.custom.empty": "No PKG files were found in these folders.",
     "pkg.custom.truncated": "The scan limit was reached. The package list may be incomplete; narrow the search folders to check more files.",
+    "pkg.custom.scan_incomplete": "Einige Paketdateien konnten nicht geprüft werden; die Ergebnisse sind möglicherweise unvollständig.",
     "pkg.custom.package_help": "Select to ask the system installer to install this package.",
     "pkg.msg.options": "PKG-Installer-Optionen",
     "pkg.msg.installing": "OnionHEN installiert das ausgewählte PKG",

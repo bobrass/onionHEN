@@ -1101,7 +1101,11 @@ void generate_custom_pkg_installer_xml(std::string &xml_buffer) {
                if (scan.inaccessible_paths != 0)
                  group.label("id_pkg_partial_inaccessible",
                              toolbox_i18n::tr("pkg.custom.partial_inaccessible"));
-               if (scan.entries.empty() && !scan.truncated)
+               if (scan.incomplete)
+                 group.label("id_pkg_scan_incomplete",
+                             toolbox_i18n::tr("pkg.custom.scan_incomplete"));
+               if (scan.entries.empty() && !scan.truncated &&
+                   !scan.incomplete)
                  group.label("id_pkg_empty",
                              toolbox_i18n::tr("pkg.custom.empty"));
                for (std::size_t i = 0; i < scan.entries.size(); ++i) {

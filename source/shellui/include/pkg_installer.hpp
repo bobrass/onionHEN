@@ -20,6 +20,7 @@ struct PkgInstallerEntry {
 struct PkgInstallerScan {
   bool accessible = false;
   bool truncated = false;
+  bool incomplete = false;
   std::size_t inaccessible_paths = 0;
   std::vector<PkgInstallerEntry> entries;
 };
