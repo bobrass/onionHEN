@@ -27,15 +27,6 @@ std::string destination_name(const std::string &name) {
   return name.substr(0, name.size() - 4) + ".elf";
 }
 
-bool is_regular(const std::string &path, struct stat *out = nullptr) {
-  struct stat st {};
-  if (lstat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
-    return false;
-  if (out)
-    *out = st;
-  return true;
-}
-
 } // namespace
 
 std::vector<Entry> scan(const std::string &usb_prefix,
@@ -83,15 +74,30 @@ std::vector<Entry> scan(const std::string &usb_prefix,
         continue;
       const std::string source = mount + "/" + name;
       struct stat st {};
-      if (!is_regular(source, &st) || st.st_size < 0)
+      if (lstat(source.c_str(), &st) != 0) {
+        // A file disappearing while the directory is scanned is a normal
+        // race. Other metadata errors mean we could not complete the listing.
+        if (errno != ENOENT && scan_complete)
+          *scan_complete = false;
         continue;
+      }
+      if (!S_ISREG(st.st_mode))
+        continue;
+      if (st.st_size < 0) {
+        if (scan_complete)
+          *scan_complete = false;
+        continue;
+      }
       Entry entry;
       entry.name = name;
       entry.source_path = source;
       entry.size = static_cast<std::uint64_t>(st.st_size);
       entry.usb_index = index;
-      entry.installed =
-          lstat((destination + "/" + destination_name(name)).c_str(), &st) == 0;
+      const std::string installed_path =
+          destination + "/" + destination_name(name);
+      entry.installed = lstat(installed_path.c_str(), &st) == 0;
+      if (!entry.installed && errno != ENOENT && scan_complete)
+        *scan_complete = false;
       entries.push_back(std::move(entry));
     }
     if (closedir(dir) != 0 && scan_complete)
