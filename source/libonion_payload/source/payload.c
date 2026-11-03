@@ -109,7 +109,7 @@ void onion_payload_write_pid_file(const char *pid_path, pid_t pid) {
   char t[32];
   const int len = snprintf(t, sizeof(t), "%d", pid);
   if (len <= 0 || (size_t)len >= sizeof(t) ||
-      !write_file_atomic(pid_path, t, (size_t)len)) {
+      !write_file_atomic_with_mode(pid_path, t, (size_t)len, 0666)) {
     LOG_WARN("Failed to persist payload PID marker: %s", pid_path);
   }
 }

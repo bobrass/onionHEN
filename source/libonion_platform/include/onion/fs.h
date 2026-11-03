@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,6 +26,12 @@ bool touch_file(const char *path);
  * @size is 0.
  */
 bool write_file_atomic(const char *path, const void *data, size_t size);
+
+/**
+ * Write atomically with the requested file mode, subject to the process umask.
+ */
+bool write_file_atomic_with_mode(const char *path, const void *data, size_t size,
+                                 mode_t mode);
 
 /** Create path and any missing parents (mode 0777). True if the directory exists. */
 bool mkdir_tree(const char *path);

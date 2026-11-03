@@ -43,7 +43,8 @@ bool touch_file(const char *path) {
   return false;
 }
 
-bool write_file_atomic(const char *path, const void *data, size_t size) {
+bool write_file_atomic_with_mode(const char *path, const void *data, size_t size,
+                                 mode_t mode) {
   char temp_path[1024];
   int fd = -1;
 
@@ -58,7 +59,7 @@ bool write_file_atomic(const char *path, const void *data, size_t size) {
       return false;
     }
 
-    fd = open(temp_path, O_WRONLY | O_CREAT | O_EXCL, 0777);
+    fd = open(temp_path, O_WRONLY | O_CREAT | O_EXCL, mode);
     if (fd >= 0)
       break;
     if (errno != EEXIST) {
@@ -107,6 +108,10 @@ bool write_file_atomic(const char *path, const void *data, size_t size) {
     return false;
   }
   return true;
+}
+
+bool write_file_atomic(const char *path, const void *data, size_t size) {
+  return write_file_atomic_with_mode(path, data, size, 0777);
 }
 
 bool mkdir_tree(const char *path) {
