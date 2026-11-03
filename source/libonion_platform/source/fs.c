@@ -23,6 +23,42 @@ static bool is_directory_entry(const char *path, unsigned char type) {
   return S_ISDIR(st.st_mode);
 }
 
+static bool is_real_directory_path(const char *path) {
+  char trimmed_path[1024];
+  const char *checked_path = path;
+  const size_t original_length = strlen(path);
+  size_t length = original_length;
+
+  /* lstat("link/" or "link/.") follows the final symlink. */
+  for (;;) {
+    while (length > 1 && path[length - 1] == '/')
+      --length;
+    if (length > 2 && path[length - 2] == '/' && path[length - 1] == '.') {
+      length -= 2;
+      continue;
+    }
+    break;
+  }
+  if (length != original_length) {
+    if (length >= sizeof(trimmed_path)) {
+      errno = ENAMETOOLONG;
+      return false;
+    }
+    memcpy(trimmed_path, path, length);
+    trimmed_path[length] = '\0';
+    checked_path = trimmed_path;
+  }
+
+  struct stat st;
+  if (lstat(checked_path, &st) != 0)
+    return false;
+  if (!S_ISDIR(st.st_mode)) {
+    errno = ENOTDIR;
+    return false;
+  }
+  return true;
+}
+
 bool if_exists(const char *path) {
   struct stat buffer;
   if (!path) {
@@ -161,6 +197,10 @@ static bool make_child_path(char *child, size_t child_size, const char *path,
 }
 
 static bool count_tree_entries(const char *path, size_t *out_count) {
+  if (!is_real_directory_path(path)) {
+    LOG_ERROR("Path is not a directory: %s: %s", path, strerror(errno));
+    return false;
+  }
   DIR *dir = opendir(path);
   size_t count = 1; /* The directory itself. */
   if (dir == NULL) {
@@ -215,6 +255,11 @@ static bool count_tree_entries(const char *path, size_t *out_count) {
 static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
                         void *user, size_t *completed, size_t total) {
   if (!path) {
+    return false;
+  }
+
+  if (!is_real_directory_path(path)) {
+    LOG_ERROR("Path is not a directory: %s: %s", path, strerror(errno));
     return false;
   }
 
