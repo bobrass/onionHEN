@@ -99,13 +99,36 @@ static bool is_regular_payload_entry(const char *path, unsigned char type) {
   return lstat(path, &st) == 0 && S_ISREG(st.st_mode);
 }
 
-static void scan_payload_directory(PayloadList *list, const char *directory) {
-  DIR *dir = opendir(directory);
-  if (!dir)
-    return;
+static void payload_list_truncate(PayloadList *list, size_t count) {
+  while (list->count > count) {
+    --list->count;
+    free(list->entries[list->count].path);
+    free(list->entries[list->count].filename);
+  }
+}
 
-  struct dirent *entry;
-  while ((entry = readdir(dir)) != NULL) {
+static bool scan_payload_directory(PayloadList *list, const char *directory) {
+  DIR *dir = opendir(directory);
+  if (!dir) {
+    if (errno != ENOENT && errno != ENOTDIR)
+      LOG_WARN("failed to open payload directory %s: %s", directory,
+               strerror(errno));
+    return false;
+  }
+
+  const size_t initial_count = list->count;
+  bool ok = true;
+  for (;;) {
+    errno = 0;
+    struct dirent *entry = readdir(dir);
+    if (!entry) {
+      if (errno != 0) {
+        LOG_ERROR("failed to read payload directory %s: %s", directory,
+                  strerror(errno));
+        ok = false;
+      }
+      break;
+    }
     if (!is_elf_filename(entry->d_name))
       continue;
 
@@ -137,10 +160,18 @@ static void scan_payload_directory(PayloadList *list, const char *directory) {
     }
     if (!payload_list_append(list, canonical, entry->d_name)) {
       LOG_ERROR("failed to record payload for auto start: %s", path);
+      ok = false;
       break;
     }
   }
-  closedir(dir);
+  if (closedir(dir) != 0) {
+    LOG_ERROR("failed to close payload directory %s: %s", directory,
+              strerror(errno));
+    ok = false;
+  }
+  if (!ok)
+    payload_list_truncate(list, initial_count);
+  return ok;
 }
 
 static int compare_payload_entries(const void *a, const void *b) {
@@ -154,7 +185,7 @@ static PayloadList find_autostart_payloads(void) {
   PayloadList list = {0};
   for (size_t i = 0;
        i < sizeof(kPayloadDirectories) / sizeof(kPayloadDirectories[0]); ++i) {
-    scan_payload_directory(&list, kPayloadDirectories[i]);
+    (void)scan_payload_directory(&list, kPayloadDirectories[i]);
   }
   if (list.count > 1)
     qsort(list.entries, list.count, sizeof(*list.entries), compare_payload_entries);
