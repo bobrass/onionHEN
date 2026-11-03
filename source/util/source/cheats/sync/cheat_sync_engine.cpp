@@ -66,16 +66,27 @@ void on_phase_progress(size_t completed, size_t total, void *user) {
 bool cleanup_temp(const std::string &root, const std::string &parent,
                   SyncProgressFn progress = nullptr,
                   void *progress_user = nullptr) {
-  if (if_exists(root.c_str())) {
-    PhaseProgress bridge{"cleanup", progress, progress_user};
-    if (progress) {
-      progress("cleanup", 0, 0, progress_user);
-    }
-    if (!rmtree_with_progress(root.c_str(),
-                              progress ? on_phase_progress : nullptr,
-                              &bridge)) {
+  struct stat root_stat {};
+  if (lstat(root.c_str(), &root_stat) == 0) {
+    if (S_ISLNK(root_stat.st_mode)) {
+      if (unlink(root.c_str()) != 0) {
+        return false;
+      }
+    } else if (!S_ISDIR(root_stat.st_mode)) {
       return false;
+    } else {
+      PhaseProgress bridge{"cleanup", progress, progress_user};
+      if (progress) {
+        progress("cleanup", 0, 0, progress_user);
+      }
+      if (!rmtree_with_progress(root.c_str(),
+                                progress ? on_phase_progress : nullptr,
+                                &bridge)) {
+        return false;
+      }
     }
+  } else if (errno != ENOENT) {
+    return false;
   }
   (void)rmdir(parent.c_str());
   return true;
