@@ -13,6 +13,9 @@
 #include <errno.h>
 #include <string.h>
 #include <stdbool.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <stdlib.h>
 
 uint64_t calculateTotalSize(const char *path) {
   long total = 0;
@@ -63,6 +66,12 @@ void calculateSize(uint64_t size, char *result) {
 }
 
 bool copyFile(const char *source, const char *destination) {
+  if (!source || !*source || !destination || !*destination) {
+    errno = EINVAL;
+    onion_notify(false, "notify.fs.copy_file", "");
+    return false;
+  }
+
   FILE *src = fopen(source, "rb");
   if (src == NULL) {
     onion_notify(false, "notify.fs.copy_file", source);
@@ -72,6 +81,8 @@ bool copyFile(const char *source, const char *destination) {
 
   struct stat sourceStat;
   struct stat destinationStat;
+  mode_t destinationMode = 0666;
+  bool destinationExists = false;
   if (fstat(fileno(src), &sourceStat) != 0) {
     const int savedErrno = errno;
     fclose(src);
@@ -80,57 +91,117 @@ bool copyFile(const char *source, const char *destination) {
     LOG_ERROR("copyFile could not stat source %s", source);
     return false;
   }
-  if (stat(destination, &destinationStat) == 0 &&
-      sourceStat.st_dev == destinationStat.st_dev &&
-      sourceStat.st_ino == destinationStat.st_ino) {
+  if (lstat(destination, &destinationStat) == 0) {
+    if (!S_ISREG(destinationStat.st_mode) ||
+        (sourceStat.st_dev == destinationStat.st_dev &&
+         sourceStat.st_ino == destinationStat.st_ino)) {
+      fclose(src);
+      errno = EINVAL;
+      onion_notify(false, "notify.fs.copy_file", destination);
+      LOG_ERROR("copyFile rejected destination %s", destination);
+      return false;
+    }
+    destinationExists = true;
+    destinationMode = destinationStat.st_mode & 0777;
+  } else if (errno != ENOENT) {
+    const int savedErrno = errno;
     fclose(src);
-    errno = EINVAL;
+    errno = savedErrno;
     onion_notify(false, "notify.fs.copy_file", destination);
-    LOG_ERROR("copyFile refused identical source and destination %s",
-              destination);
+    LOG_ERROR("copyFile could not inspect destination %s: %s", destination,
+              strerror(errno));
     return false;
   }
 
-  FILE *dest = fopen(destination, "wb");
-  if (dest == NULL) {
-    onion_notify(false, "notify.fs.copy_file", destination);
-    LOG_ERROR("copyFile failed for %s", destination);
+  char tempPath[PATH_MAX];
+  int tempFd = -1;
+  for (unsigned int attempt = 0; attempt < 1024; ++attempt) {
+    const int written = snprintf(tempPath, sizeof(tempPath), "%s.tmp.%d.%u",
+                                 destination, static_cast<int>(getpid()),
+                                 attempt);
+    if (written < 0 || static_cast<size_t>(written) >= sizeof(tempPath)) {
+      fclose(src);
+      errno = ENAMETOOLONG;
+      onion_notify(false, "notify.fs.copy_file", destination);
+      return false;
+    }
+    do {
+      tempFd = open(tempPath, O_WRONLY | O_CREAT | O_EXCL, destinationMode);
+    } while (tempFd < 0 && errno == EINTR);
+    if (tempFd >= 0 || errno != EEXIST)
+      break;
+  }
+  if (tempFd < 0) {
+    const int savedErrno = errno;
     fclose(src);
+    errno = savedErrno;
+    onion_notify(false, "notify.fs.copy_file", destination);
+    LOG_ERROR("copyFile could not create staging file for %s: %s", destination,
+              strerror(errno));
+    return false;
+  }
+  if (destinationExists && fchmod(tempFd, destinationMode) != 0) {
+    const int savedErrno = errno;
+    close(tempFd);
+    unlink(tempPath);
+    fclose(src);
+    errno = savedErrno;
+    onion_notify(false, "notify.fs.copy_file", destination);
+    return false;
+  }
+
+  FILE *dest = fdopen(tempFd, "wb");
+  if (!dest) {
+    const int savedErrno = errno;
+    close(tempFd);
+    unlink(tempPath);
+    fclose(src);
+    errno = savedErrno;
+    onion_notify(false, "notify.fs.copy_file", destination);
     return false;
   }
 
   char buffer[1024];
-  bool copyOk = true;
   int copyErrno = 0;
   size_t bytes = 0;
   errno = 0;
   while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0) {
     if (fwrite(buffer, 1, bytes, dest) != bytes) {
-      copyOk = false;
       copyErrno = errno != 0 ? errno : EIO;
       break;
     }
   }
-  if (ferror(src)) {
-    copyOk = false;
+  if (copyErrno == 0 && ferror(src))
     copyErrno = errno != 0 ? errno : EIO;
-  }
 
-  if (fclose(src) != 0) {
-    copyOk = false;
-    if (copyErrno == 0) copyErrno = errno != 0 ? errno : EIO;
-  }
-  if (fclose(dest) != 0) {
-    copyOk = false;
-    if (copyErrno == 0) copyErrno = errno != 0 ? errno : EIO;
-  }
-  if (!copyOk) {
+  if (fclose(src) != 0 && copyErrno == 0)
+    copyErrno = errno != 0 ? errno : EIO;
+  if (copyErrno == 0 && fflush(dest) != 0)
+    copyErrno = errno != 0 ? errno : EIO;
+  if (copyErrno == 0 && fsync(fileno(dest)) != 0)
+    copyErrno = errno != 0 ? errno : EIO;
+  if (fclose(dest) != 0 && copyErrno == 0)
+    copyErrno = errno != 0 ? errno : EIO;
+
+  if (copyErrno != 0) {
+    unlink(tempPath);
     errno = copyErrno;
     onion_notify(false, "notify.fs.copy_file", destination);
     LOG_ERROR("copyFile failed while copying %s to %s: %s", source,
               destination, strerror(errno));
+    return false;
   }
-  return copyOk;
+
+  if (rename(tempPath, destination) != 0) {
+    const int savedErrno = errno;
+    unlink(tempPath);
+    errno = savedErrno;
+    onion_notify(false, "notify.fs.copy_file", destination);
+    LOG_ERROR("copyFile could not publish %s: %s", destination,
+              strerror(errno));
+    return false;
+  }
+  return true;
 }
 
 bool copyRecursive(const char *source, const char *destination) {
