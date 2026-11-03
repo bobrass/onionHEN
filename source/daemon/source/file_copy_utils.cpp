@@ -282,6 +282,7 @@ static bool copyRecursiveInternal(const char *source, const char *destination,
       realpath(destination, resolved_destination) == NULL) {
     const int error = errno;
     closedir(dir);
+    if (created_destination) rmdir(destination);
     onion_notify(false, "notify.fs.copy_recursive", source);
     errno = error;
     return false;
