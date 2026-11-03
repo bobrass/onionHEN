@@ -112,11 +112,14 @@ bool calculateTotalSize(const char *path, uint64_t *total) {
   if (total == NULL) {
     errno = EINVAL;
     onion_notify(false, "notify.fs.size_failed", path);
+    errno = EINVAL;
     return false;
   }
   uint64_t result = 0;
   if (!calculateTotalSizeInternal(path, &result, NULL)) {
+    const int error = errno;
     onion_notify(false, "notify.fs.size_failed", path);
+    errno = error;
     return false;
   }
   *total = result;
