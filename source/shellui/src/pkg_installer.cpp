@@ -113,6 +113,22 @@ int resolve_appinst_api() {
   return 0;
 }
 
+DIR *open_directory_retry(const char *path) {
+  DIR *directory = nullptr;
+  do {
+    directory = ::opendir(path);
+  } while (!directory && errno == EINTR);
+  return directory;
+}
+
+int stat_retry(const char *path, struct stat *st) {
+  int result = 0;
+  do {
+    result = ::stat(path, st);
+  } while (result != 0 && errno == EINTR);
+  return result;
+}
+
 } // namespace
 
 bool pkg_search_path_is_valid(const std::string &path) {
@@ -167,7 +183,8 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
     }
     const std::string shellui_path = pkg_search_path_shellui_view(system_path);
     DIR *directory = shellui_path.empty() ? nullptr
-                                           : ::opendir(shellui_path.c_str());
+                                           : open_directory_retry(
+                                                 shellui_path.c_str());
     if (!directory) {
       ++result.inaccessible_paths;
       continue;
@@ -176,8 +193,11 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
     std::size_t examined_entries = 0;
     bool pkg_entry_limit_reached = false;
     for (;;) {
-      errno = 0;
-      const struct dirent *entry = ::readdir(directory);
+      const struct dirent *entry = nullptr;
+      do {
+        errno = 0;
+        entry = ::readdir(directory);
+      } while (!entry && errno == EINTR);
       if (!entry) {
         if (errno != 0)
           result.incomplete = true;
@@ -195,7 +215,7 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
         shellui_file.push_back('/');
       shellui_file += entry->d_name;
       struct stat st {};
-      if (::stat(shellui_file.c_str(), &st) != 0) {
+      if (stat_retry(shellui_file.c_str(), &st) != 0) {
         if (errno != ENOENT)
           result.incomplete = true;
         continue;
