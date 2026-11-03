@@ -9,6 +9,7 @@
 #include <ps5/kernel.h>
 
 #include <cstdint>
+#include <limits>
 
 namespace {
 
@@ -76,6 +77,11 @@ uint64_t virt2phys(uintptr_t addr, uint64_t dmap, uint64_t pml,
 }
 
 int copy_via_dmap(pid_t pid, uint64_t addr, void *buf, size_t len, bool to_proc) {
+  if (len == 0 ||
+      static_cast<uint64_t>(len - 1) >
+          std::numeric_limits<uint64_t>::max() - addr)
+    return -1;
+
   uint64_t cr3 = 0;
   uint64_t dmap = 0;
   if (get_proc_cr3(pid, &cr3, &dmap) < 0)
@@ -88,7 +94,7 @@ int copy_via_dmap(pid_t pid, uint64_t addr, void *buf, size_t len, bool to_proc)
     uint64_t phys_end = 0;
     const uint64_t phys = virt2phys(static_cast<uintptr_t>(vaddr), dmap, cr3,
                                     &phys_end);
-    if (phys == static_cast<uint64_t>(-1))
+    if (phys == static_cast<uint64_t>(-1) || phys_end <= phys)
       return -1;
     size_t chunk = static_cast<size_t>(phys_end - phys);
     if (left < chunk)
