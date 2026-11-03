@@ -23,6 +23,9 @@ void AES_CBC_decrypt_buffer(struct AES_ctx *ctx, uint8_t *buf, size_t length);
 
 #define AES_BLOCKLEN 16
 
+/* Match the per-file limit used by the cheat ZIP extractor. */
+#define SHNEXT_MAX_DECOMPRESSED_BYTES (8u * 1024u * 1024u)
+
 static const uint8_t SHNEXT_FIELD[64] = {
     0x04, 0x14, 0x02, 0x80, 0x01, 0x20, 0xF3, 0xEB,
     0x03, 0x01, 0x02, 0x80, 0x00, 0x20, 0xF3, 0xEB,
@@ -38,18 +41,34 @@ static const char SHNEXT_PROCESS_KEY[] = "#my*S3cr3t";
 
 static int shnext_deflate_decompress(const uint8_t *data, size_t data_len,
                                      uint8_t **out, size_t *out_len) {
-  size_t buf_len = data_len * 10 + 1024;
+  size_t buf_len;
   uint8_t *buf = NULL;
 
+  if (out == NULL || out_len == NULL) {
+    return -1;
+  }
   *out = NULL;
   *out_len = 0;
+  if (data == NULL || data_len == 0) {
+    return -1;
+  }
+
+  if (data_len > SHNEXT_MAX_DECOMPRESSED_BYTES) {
+    LOG_ERROR("[engine] shnext compressed input exceeds %u-byte limit",
+              (unsigned)SHNEXT_MAX_DECOMPRESSED_BYTES);
+    return -1;
+  }
+
+  buf_len = data_len > (SHNEXT_MAX_DECOMPRESSED_BYTES - 1024u) / 10u
+                ? SHNEXT_MAX_DECOMPRESSED_BYTES
+                : data_len * 10u + 1024u;
 
   buf = (uint8_t *)malloc(buf_len);
   if (buf == NULL) {
     return -1;
   }
 
-  for (int attempt = 0; attempt < 4; ++attempt) {
+  for (;;) {
     size_t result = tinfl_decompress_mem_to_mem(
         buf, buf_len, data, data_len,
         TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
@@ -60,16 +79,19 @@ static int shnext_deflate_decompress(const uint8_t *data, size_t data_len,
     }
     onion_cheat_secure_zero(buf, buf_len);
     free(buf);
-    buf_len *= 2;
+    if (buf_len == SHNEXT_MAX_DECOMPRESSED_BYTES) {
+      LOG_ERROR("[engine] shnext decompressed data exceeds %u-byte limit",
+                (unsigned)SHNEXT_MAX_DECOMPRESSED_BYTES);
+      return -1;
+    }
+    buf_len = buf_len > SHNEXT_MAX_DECOMPRESSED_BYTES / 2u
+                  ? SHNEXT_MAX_DECOMPRESSED_BYTES
+                  : buf_len * 2u;
     buf = (uint8_t *)malloc(buf_len);
     if (buf == NULL) {
       return -1;
     }
   }
-
-  onion_cheat_secure_zero(buf, buf_len);
-  free(buf);
-  return -1;
 }
 
 static void shnext_clear_json_strings(cJSON *item) {
