@@ -256,14 +256,24 @@ static pid_t read_pid_response(int fd) {
   return (pid_t)pid;
 }
 
-static void mkdir_parent(const char *abs_path) {
-  char tmp[512];
-  snprintf(tmp, sizeof(tmp), "%s", abs_path);
+static bool mkdir_parent(const char *abs_path) {
+  char tmp[1024];
+  const int n = snprintf(tmp, sizeof(tmp), "%s", abs_path);
+  if (n < 0 || (size_t)n >= sizeof(tmp))
+    return false;
+
   char *slash = strrchr(tmp, '/');
   if (!slash || slash == tmp)
-    return;
+    return true;
+
   *slash = '\0';
-  mkdir(tmp, 0777);
+  if (mkdir(tmp, 0777) == 0)
+    return true;
+  if (errno != EEXIST)
+    return false;
+
+  struct stat st;
+  return stat(tmp, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
 pid_t elfldr_remote_onion_launch_file_get_pid(const char *abs_path,
@@ -285,7 +295,8 @@ pid_t elfldr_remote_onion_write_and_launch_get_pid_with_args(
   if (!abs_path || abs_path[0] != '/' || !elf || size < 4)
     return -1;
 
-  mkdir_parent(abs_path);
+  if (!mkdir_parent(abs_path))
+    return -1;
   if (!write_file_atomic(abs_path, elf, size))
     return -1;
 
