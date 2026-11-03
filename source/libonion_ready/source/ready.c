@@ -83,8 +83,7 @@ bool onion_ready_clear(const char *name) {
   if (!onion_ready_path(name, path, sizeof(path))) {
     return false;
   }
-  unlink(path);
-  return true;
+  return unlink(path) == 0 || errno == ENOENT;
 }
 
 bool onion_ready_is_set(const char *name) {
