@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -43,10 +44,22 @@ static bool push_directory_identity(DIR *dir, DirectoryIdentityStack *stack,
   return true;
 }
 
+static void add_size_saturating(uint64_t *total, uint64_t amount,
+                               const char *path) {
+  if (*total == UINT64_MAX)
+    return;
+  if (amount > UINT64_MAX - *total) {
+    *total = UINT64_MAX;
+    LOG_WARN("directory size exceeded uint64_t range while scanning %s", path);
+    return;
+  }
+  *total += amount;
+}
+
 static uint64_t calculate_total_size(const char *path,
                                     DirectoryIdentityStack *stack,
                                     size_t depth) {
-  long total = 0;
+  uint64_t total = 0;
   DIR *dir = opendir(path);
   if (dir == NULL) {
     onion_notify(false, "notify.fs.size_failed", path);
@@ -90,17 +103,18 @@ static uint64_t calculate_total_size(const char *path,
                strerror(errno));
       continue;
     }
-    if (S_ISDIR(st.st_mode))
-      total += static_cast<long>(
-          calculate_total_size(fullPath, stack, depth + 1));
-    else if (S_ISREG(st.st_mode))
-      total += st.st_size;
+    if (S_ISDIR(st.st_mode)) {
+      add_size_saturating(
+          &total, calculate_total_size(fullPath, stack, depth + 1), path);
+    } else if (S_ISREG(st.st_mode) && st.st_size >= 0) {
+      add_size_saturating(&total, static_cast<uint64_t>(st.st_size), path);
+    }
   }
 
   if (closedir(dir) != 0)
     LOG_WARN("directory size scan could not close %s: %s", path,
              strerror(errno));
-  return static_cast<uint64_t>(total);
+  return total;
 }
 
 uint64_t calculateTotalSize(const char *path) {
