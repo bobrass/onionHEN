@@ -162,20 +162,27 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
   g_scanned_system_paths.assign(system_paths, system_paths + path_count);
   for (const std::string &system_path : g_scanned_system_paths) {
     if (!pkg_search_path_is_valid(system_path)) {
-      ++result.inaccessible_paths;
+      ++result.incomplete_paths;
       continue;
     }
     const std::string shellui_path = pkg_search_path_shellui_view(system_path);
     DIR *directory = shellui_path.empty() ? nullptr
                                            : ::opendir(shellui_path.c_str());
     if (!directory) {
-      ++result.inaccessible_paths;
+      ++result.incomplete_paths;
       continue;
     }
     result.accessible = true;
     std::size_t examined_entries = 0;
     bool pkg_entry_limit_reached = false;
-    while (const struct dirent *entry = ::readdir(directory)) {
+    bool scan_failed = false;
+    for (;;) {
+      errno = 0;
+      const struct dirent *entry = ::readdir(directory);
+      if (!entry) {
+        scan_failed = errno != 0;
+        break;
+      }
       if (examined_entries >= kMaxExaminedPkgDirEntries) {
         result.truncated = true;
         break;
@@ -188,7 +195,11 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
         shellui_file.push_back('/');
       shellui_file += entry->d_name;
       struct stat st {};
-      if (::stat(shellui_file.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+      if (::stat(shellui_file.c_str(), &st) != 0) {
+        scan_failed = true;
+        continue;
+      }
+      if (!S_ISREG(st.st_mode))
         continue;
       if (result.entries.size() == kMaxPkgEntries) {
         result.truncated = true;
@@ -202,7 +213,10 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
       result.entries.push_back({entry->d_name, std::move(shellui_file),
                                 std::move(system_file), system_path});
     }
-    ::closedir(directory);
+    if (::closedir(directory) != 0)
+      scan_failed = true;
+    if (scan_failed)
+      ++result.incomplete_paths;
     if (pkg_entry_limit_reached)
       break;
   }

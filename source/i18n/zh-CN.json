@@ -50,7 +50,7 @@
     "pkg.custom.no_paths": "No search folders are configured.",
     "pkg.custom.packages": "Found PKG files",
     "pkg.custom.inaccessible": "None of the configured folders could be opened.",
-    "pkg.custom.partial_inaccessible": "Some configured folders could not be opened.",
+    "pkg.custom.incomplete_scan": "Some configured folders could not be fully scanned; results may be incomplete.",
     "pkg.custom.empty": "No PKG files were found in these folders.",
     "pkg.custom.truncated": "The scan limit was reached. The package list may be incomplete; narrow the search folders to check more files.",
     "pkg.custom.package_help": "Select to ask the system installer to install this package.",
