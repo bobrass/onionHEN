@@ -78,6 +78,8 @@ static bool send_all(int fd, const void *buf, size_t size) {
   size_t sent = 0;
   while (sent < size) {
     ssize_t n = send(fd, p + sent, size - sent, MSG_NOSIGNAL);
+    if (n < 0 && errno == EINTR)
+      continue;
     if (n <= 0)
       return false;
     sent += (size_t)n;
@@ -101,7 +103,10 @@ bool elfldr_remote_onion_available(void) {
   struct timeval timeout;
   timeout.tv_sec = 2;
   timeout.tv_usec = 0;
-  (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
+    close(fd);
+    return false;
+  }
 
   const char ping[] = ONION_ELFLDR_PING "\n";
   if (!send_all(fd, ping, sizeof(ping) - 1)) {
@@ -228,7 +233,8 @@ static pid_t read_pid_response(int fd) {
    * not fall back or infer a PID when this protocol fails. */
   timeout.tv_sec = 120;
   timeout.tv_usec = 0;
-  (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
+    return -1;
 
   while (used < sizeof(buf) - 1) {
     const ssize_t n = recv(fd, buf + used, sizeof(buf) - 1 - used, 0);
