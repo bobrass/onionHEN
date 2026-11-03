@@ -7,8 +7,10 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <limits.h>
 #include <dirent.h>
 #include <errno.h>
 #include <string.h>
@@ -145,7 +147,8 @@ bool copyRecursive(const char *source, const char *destination) {
     return false;
   }
 
-  if (mkdir(destination, 0777) != 0 && errno != EEXIST) {
+  const bool created_destination = mkdir(destination, 0777) == 0;
+  if (!created_destination && errno != EEXIST) {
     const int error = errno;
     closedir(dir);
     onion_notify(false, "notify.fs.copy_recursive", destination);
@@ -158,6 +161,32 @@ bool copyRecursive(const char *source, const char *destination) {
       !S_ISDIR(destination_stat.st_mode)) {
     const int error = destination_stat_result != 0 ? errno : ENOTDIR;
     closedir(dir);
+    onion_notify(false, "notify.fs.copy_recursive", destination);
+    errno = error;
+    return false;
+  }
+
+  char resolved_source[PATH_MAX];
+  char resolved_destination[PATH_MAX];
+  if (realpath(source, resolved_source) == NULL ||
+      realpath(destination, resolved_destination) == NULL) {
+    const int error = errno;
+    closedir(dir);
+    onion_notify(false, "notify.fs.copy_recursive", source);
+    errno = error;
+    return false;
+  }
+
+  const size_t source_length = strlen(resolved_source);
+  const bool destination_is_source =
+      strcmp(resolved_source, resolved_destination) == 0;
+  const bool destination_is_descendant =
+      strncmp(resolved_source, resolved_destination, source_length) == 0 &&
+      (source_length == 1 || resolved_destination[source_length] == '/');
+  if (destination_is_source || destination_is_descendant) {
+    const int error = EINVAL;
+    closedir(dir);
+    if (created_destination) rmdir(destination);
     onion_notify(false, "notify.fs.copy_recursive", destination);
     errno = error;
     return false;
