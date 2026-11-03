@@ -203,10 +203,13 @@ pid_t onion_payload_launch_elfldr(const char *title_id, const char *path) {
 }
 
 uint8_t *onion_payload_read_file(const char *path, size_t *out_size) {
-  if (!path || !out_size)
+  if (!out_size)
+    return NULL;
+  *out_size = 0;
+  if (!path || !path[0])
     return NULL;
 
-  const int fd = open(path, O_RDONLY);
+  const int fd = open(path, O_RDONLY | O_NONBLOCK);
   if (fd < 0) {
     LOG_ERROR("Failed to open file %s (%s)", path, strerror(errno));
     return NULL;
@@ -214,21 +217,32 @@ uint8_t *onion_payload_read_file(const char *path, size_t *out_size) {
 
   struct stat st;
   if (fstat(fd, &st) != 0) {
-    LOG_ERROR("Failed to stat file %s", path);
+    const int saved_errno = errno;
+    LOG_ERROR("Failed to stat file %s (%s)", path, strerror(saved_errno));
     close(fd);
+    errno = saved_errno;
+    return NULL;
+  }
+  if (!S_ISREG(st.st_mode)) {
+    LOG_ERROR("Payload source is not a regular file: %s", path);
+    close(fd);
+    errno = EINVAL;
     return NULL;
   }
   if (st.st_size <= 0) {
     LOG_WARN("Empty payload file %s", path);
     close(fd);
+    errno = EINVAL;
     return NULL;
   }
 
   uint8_t *buf = (uint8_t *)malloc((size_t)st.st_size);
   if (!buf) {
+    const int saved_errno = errno;
     LOG_ERROR("Failed to allocate %lld bytes for payload",
                  (long long)st.st_size);
     close(fd);
+    errno = saved_errno;
     return NULL;
   }
 
