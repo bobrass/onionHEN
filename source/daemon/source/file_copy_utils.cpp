@@ -215,7 +215,19 @@ bool copyRecursive(const char *source, const char *destination) {
   struct dirent *entry;
   char srcPath[1024];
   char destPath[1024];
-  while ((entry = readdir(dir)) != NULL) {
+  for (;;) {
+    errno = 0;
+    entry = readdir(dir);
+    if (entry == NULL) {
+      if (errno != 0) {
+        const int savedErrno = errno;
+        closedir(dir);
+        onion_notify(false, "notify.fs.copy_recursive", source);
+        errno = savedErrno;
+        return false;
+      }
+      break;
+    }
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
 
@@ -268,6 +280,11 @@ bool copyRecursive(const char *source, const char *destination) {
     }
   }
 
-  closedir(dir);
+  if (closedir(dir) != 0) {
+    const int savedErrno = errno;
+    onion_notify(false, "notify.fs.copy_recursive", source);
+    errno = savedErrno;
+    return false;
+  }
   return true;
 }
