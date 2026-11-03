@@ -149,6 +149,8 @@ static size_t count_tree_entries(const char *path) {
 
 static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
                         void *user, size_t *completed, size_t total) {
+  bool success = true;
+
   if (!path) {
     return false;
   }
@@ -160,41 +162,64 @@ static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
   }
 
   struct dirent *entry;
-  while ((entry = readdir(dir)) != NULL) {
+  for (;;) {
+    errno = 0;
+    entry = readdir(dir);
+    if (entry == NULL) {
+      if (errno != 0) {
+        LOG_ERROR("Error reading directory %s: %s", path, strerror(errno));
+        success = false;
+      }
+      break;
+    }
+
     bool is_directory;
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
       continue;
     }
 
     char child[1024];
-    snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+    const int child_length =
+        snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+    if (child_length < 0 || (size_t)child_length >= sizeof(child)) {
+      LOG_ERROR("Path too long while deleting %s/%s", path, entry->d_name);
+      success = false;
+      continue;
+    }
     is_directory = is_directory_entry(child, entry->d_type);
 
     if (is_directory) {
-      (void)rmtree_impl(child, progress, user, completed, total);
-    } else if (unlink(child) != 0) {
-      LOG_ERROR("Error deleting file %s", child);
-    }
-    if (!is_directory && completed != NULL) {
-      ++(*completed);
-      if (progress != NULL) {
-        progress(*completed, total, user);
+      if (!rmtree_impl(child, progress, user, completed, total)) {
+        success = false;
+      }
+    } else {
+      if (unlink(child) != 0) {
+        LOG_ERROR("Error deleting file %s: %s", child, strerror(errno));
+        success = false;
+      } else if (completed != NULL) {
+        ++(*completed);
+        if (progress != NULL) {
+          progress(*completed, total, user);
+        }
       }
     }
   }
 
-  closedir(dir);
+  if (closedir(dir) != 0) {
+    LOG_ERROR("Error closing directory %s: %s", path, strerror(errno));
+    success = false;
+  }
 
   if (rmdir(path) != 0) {
-    LOG_ERROR("Error deleting folder %s", path);
-  }
-  if (completed != NULL) {
+    LOG_ERROR("Error deleting folder %s: %s", path, strerror(errno));
+    success = false;
+  } else if (completed != NULL) {
     ++(*completed);
     if (progress != NULL) {
       progress(*completed, total, user);
     }
   }
-  return true;
+  return success;
 }
 
 bool rmtree(const char *path) {
