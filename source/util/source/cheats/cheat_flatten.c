@@ -3,6 +3,8 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -360,26 +362,111 @@ int onion_cheat_filename_compare(const onion_cheat_filename_t *lhs,
 static int copy_file(const char *src, const char *dst) {
   FILE *in = fopen(src, "rb");
   FILE *out = NULL;
+  struct stat source_stat;
+  struct stat destination_stat;
   char buf[8192];
+  char temp_path[1024];
   size_t n;
+  mode_t destination_mode = 0666;
+  bool destination_exists = false;
+  int fd = -1;
+  int copy_error = 0;
 
   if (in == NULL) {
     return -1;
   }
-  out = fopen(dst, "wb");
-  if (out == NULL) {
+  if (fstat(fileno(in), &source_stat) != 0) {
+    const int saved_errno = errno;
     fclose(in);
+    errno = saved_errno;
     return -1;
   }
-  while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
-    if (fwrite(buf, 1, n, out) != n) {
+  if (lstat(dst, &destination_stat) == 0) {
+    if (!S_ISREG(destination_stat.st_mode) ||
+        (source_stat.st_dev == destination_stat.st_dev &&
+         source_stat.st_ino == destination_stat.st_ino)) {
       fclose(in);
-      fclose(out);
+      errno = EINVAL;
       return -1;
     }
+    destination_exists = true;
+    destination_mode = destination_stat.st_mode & 0777;
+  } else if (errno != ENOENT) {
+    const int saved_errno = errno;
+    fclose(in);
+    errno = saved_errno;
+    return -1;
   }
-  fclose(in);
-  fclose(out);
+
+  for (unsigned int attempt = 0; attempt < 1024; ++attempt) {
+    const int written = snprintf(temp_path, sizeof(temp_path), "%s.tmp.%d.%u",
+                                 dst, (int)getpid(), attempt);
+    if (written < 0 || (size_t)written >= sizeof(temp_path)) {
+      fclose(in);
+      errno = ENAMETOOLONG;
+      return -1;
+    }
+    fd = open(temp_path, O_WRONLY | O_CREAT | O_EXCL, destination_mode);
+    if (fd >= 0 || errno != EEXIST) {
+      break;
+    }
+  }
+  if (fd < 0) {
+    const int saved_errno = errno;
+    fclose(in);
+    errno = saved_errno;
+    return -1;
+  }
+  if (destination_exists && fchmod(fd, destination_mode) != 0) {
+    const int saved_errno = errno;
+    close(fd);
+    unlink(temp_path);
+    fclose(in);
+    errno = saved_errno;
+    return -1;
+  }
+  out = fdopen(fd, "wb");
+  if (out == NULL) {
+    const int saved_errno = errno;
+    close(fd);
+    unlink(temp_path);
+    fclose(in);
+    errno = saved_errno;
+    return -1;
+  }
+
+  while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+    if (fwrite(buf, 1, n, out) != n) {
+      copy_error = errno != 0 ? errno : EIO;
+      break;
+    }
+  }
+  if (copy_error == 0 && ferror(in)) {
+    copy_error = errno != 0 ? errno : EIO;
+  }
+  if (fclose(in) != 0 && copy_error == 0) {
+    copy_error = errno != 0 ? errno : EIO;
+  }
+  if (fflush(out) != 0 && copy_error == 0) {
+    copy_error = errno != 0 ? errno : EIO;
+  }
+  if (copy_error == 0 && fsync(fileno(out)) != 0) {
+    copy_error = errno != 0 ? errno : EIO;
+  }
+  if (fclose(out) != 0 && copy_error == 0) {
+    copy_error = errno != 0 ? errno : EIO;
+  }
+  if (copy_error != 0) {
+    unlink(temp_path);
+    errno = copy_error;
+    return -1;
+  }
+  if (rename(temp_path, dst) != 0) {
+    const int saved_errno = errno;
+    unlink(temp_path);
+    errno = saved_errno;
+    return -1;
+  }
   return 0;
 }
 
