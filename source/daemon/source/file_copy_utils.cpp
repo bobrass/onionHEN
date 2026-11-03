@@ -31,8 +31,16 @@ uint64_t calculateTotalSize(const char *path) {
 
     snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
     struct stat st;
-    if (stat(fullPath, &st) != 0)
+    if (lstat(fullPath, &st) != 0)
       continue;
+    if (S_ISLNK(st.st_mode)) {
+      if (stat(fullPath, &st) != 0)
+        continue;
+      // Do not recurse through directory symlinks: they can point back to
+      // this directory and make size calculation recurse forever.
+      if (S_ISDIR(st.st_mode))
+        continue;
+    }
     if (S_ISDIR(st.st_mode))
       total += static_cast<long>(calculateTotalSize(fullPath));
     else if (S_ISREG(st.st_mode))
@@ -171,12 +179,25 @@ bool copyRecursive(const char *source, const char *destination) {
     }
 
     struct stat st;
-    if (stat(srcPath, &st) != 0) {
+    if (lstat(srcPath, &st) != 0) {
       const int savedErrno = errno;
       closedir(dir);
       errno = savedErrno;
       onion_notify(false, "notify.fs.copy_recursive", srcPath);
       return false;
+    }
+    if (S_ISLNK(st.st_mode)) {
+      if (stat(srcPath, &st) != 0) {
+        const int savedErrno = errno;
+        closedir(dir);
+        errno = savedErrno;
+        onion_notify(false, "notify.fs.copy_recursive", srcPath);
+        return false;
+      }
+      // Preserve copying regular-file symlinks, but never recurse through a
+      // directory symlink that could point back into the source tree.
+      if (S_ISDIR(st.st_mode))
+        continue;
     }
     if (S_ISDIR(st.st_mode)) {
       if (!copyRecursive(srcPath, destPath)) {
