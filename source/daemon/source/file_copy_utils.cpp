@@ -145,32 +145,78 @@ bool copyRecursive(const char *source, const char *destination) {
     return false;
   }
 
-  mkdir(destination, 0777);
+  if (mkdir(destination, 0777) != 0 && errno != EEXIST) {
+    const int error = errno;
+    closedir(dir);
+    onion_notify(false, "notify.fs.copy_recursive", destination);
+    errno = error;
+    return false;
+  }
+  struct stat destination_stat;
+  const int destination_stat_result = stat(destination, &destination_stat);
+  if (destination_stat_result != 0 ||
+      !S_ISDIR(destination_stat.st_mode)) {
+    const int error = destination_stat_result != 0 ? errno : ENOTDIR;
+    closedir(dir);
+    onion_notify(false, "notify.fs.copy_recursive", destination);
+    errno = error;
+    return false;
+  }
 
-  struct dirent *entry;
   char srcPath[1024];
   char destPath[1024];
-  while ((entry = readdir(dir)) != NULL) {
+  for (;;) {
+    errno = 0;
+    struct dirent *entry = readdir(dir);
+    if (entry == NULL) {
+      int error = errno;
+      if (closedir(dir) != 0 && error == 0) error = errno;
+      if (error != 0) {
+        onion_notify(false, "notify.fs.copy_recursive", source);
+        errno = error;
+        return false;
+      }
+      return true;
+    }
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
 
-    snprintf(srcPath, sizeof(srcPath), "%s/%s", source, entry->d_name);
-    snprintf(destPath, sizeof(destPath), "%s/%s", destination, entry->d_name);
+    const int src_length =
+        snprintf(srcPath, sizeof(srcPath), "%s/%s", source, entry->d_name);
+    const int dest_length = snprintf(destPath, sizeof(destPath), "%s/%s",
+                                     destination, entry->d_name);
+    if (src_length < 0 || static_cast<size_t>(src_length) >= sizeof(srcPath) ||
+        dest_length < 0 ||
+        static_cast<size_t>(dest_length) >= sizeof(destPath)) {
+      closedir(dir);
+      onion_notify(false, "notify.fs.copy_recursive", source);
+      errno = ENAMETOOLONG;
+      return false;
+    }
 
     struct stat st;
-    if (stat(srcPath, &st) != 0)
-      continue;
+    if (stat(srcPath, &st) != 0) {
+      const int error = errno;
+      closedir(dir);
+      onion_notify(false, "notify.fs.copy_recursive", srcPath);
+      errno = error;
+      return false;
+    }
     if (S_ISDIR(st.st_mode)) {
-      copyRecursive(srcPath, destPath);
+      if (!copyRecursive(srcPath, destPath)) {
+        const int error = errno;
+        closedir(dir);
+        errno = error;
+        return false;
+      }
     } else if (S_ISREG(st.st_mode)) {
       if (!copyFile(srcPath, destPath)) {
+        const int error = errno;
         onion_notify(false, "notify.fs.copy_recursive", srcPath);
         closedir(dir);
+        errno = error;
         return false;
       }
     }
   }
-
-  closedir(dir);
-  return true;
 }
