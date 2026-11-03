@@ -77,12 +77,34 @@ static inline int ini_parser_load(IniParser* parser, const char* filename) {
 
     char buffer[MAX_LINE];
     ssize_t bytesRead;
-    int bufferIndex = 0;
+    size_t bufferIndex = 0;
     char section[MAX_LINE] = "";
 
-    while ((bytesRead = read(fd, buffer + bufferIndex, sizeof(buffer) - bufferIndex - 1)) > 0) {
-        buffer[bytesRead + bufferIndex] = '\0';
-        bufferIndex += bytesRead;
+    while (1) {
+        bytesRead = read(fd, buffer + bufferIndex,
+                         sizeof(buffer) - bufferIndex - 1);
+        if (bytesRead < 0) {
+            close(fd);
+            parser->count = 0;
+            return 0;
+        }
+
+        const int endOfFile = bytesRead == 0;
+        if (endOfFile) {
+            if (bufferIndex == 0) {
+                break;
+            }
+            if (bufferIndex >= sizeof(buffer) - 1) {
+                close(fd);
+                parser->count = 0;
+                return 0;
+            }
+            buffer[bufferIndex++] = '\n';
+        } else {
+            bufferIndex += (size_t)bytesRead;
+        }
+        buffer[bufferIndex] = '\0';
+
         char* line = buffer;
         char* lineEnd;
 
@@ -142,6 +164,9 @@ static inline int ini_parser_load(IniParser* parser, const char* filename) {
             close(fd);
             parser->count = 0;
             return 0;
+        }
+        if (endOfFile) {
+            break;
         }
     }
 
