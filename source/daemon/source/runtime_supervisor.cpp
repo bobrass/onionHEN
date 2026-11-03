@@ -64,16 +64,33 @@ pid_t read_pid_marker(const char *path) {
     return -1;
 
   char buf[32] = {};
-  const ssize_t n = read(fd, buf, sizeof(buf) - 1);
+  size_t length = 0;
+  bool read_error = false;
+  while (length < sizeof(buf)) {
+    const ssize_t count = read(fd, buf + length, sizeof(buf) - length);
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count < 0) {
+      read_error = true;
+      break;
+    }
+    if (count == 0)
+      break;
+    length += static_cast<size_t>(count);
+  }
   close(fd);
-  if (n <= 0)
+  if (read_error || length == 0 || length == sizeof(buf))
     return -1;
+  for (size_t i = 0; i < length; ++i) {
+    if (buf[i] < '0' || buf[i] > '9')
+      return -1;
+  }
+  buf[length] = '\0';
 
   char *end = nullptr;
   errno = 0;
   const long value = strtol(buf, &end, 10);
-  if (errno != 0 || end == buf || value <= 1 || value > INT_MAX ||
-      *end != '\0')
+  if (errno != 0 || end != buf + length || value <= 1 || value > INT_MAX)
     return -1;
   return static_cast<pid_t>(value);
 }

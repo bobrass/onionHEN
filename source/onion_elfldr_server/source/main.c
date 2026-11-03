@@ -6,6 +6,7 @@
  * ps5-payload-dev elfldr port 9021 untouched for user-provided loaders.
  */
 
+#include <onion/fs.h>
 #include <onion/log.h>
 #include <arpa/inet.h>
 #include <elf.h>
@@ -51,19 +52,19 @@
 
 #define ONION_ELFLDR_STATE ONION_SYSTEM_TMP_ELFLDR_STATE
 
+static void write_pid_marker(const char *path) {
+  char buf[32];
+  const int len = snprintf(buf, sizeof(buf), "%d", getpid());
+  if (len <= 0 || (size_t)len >= sizeof(buf) ||
+      !write_file_atomic_with_mode(path, buf, (size_t)len, 0666)) {
+    LOG_WARN("Failed to persist elfldr PID marker: %s", path);
+  }
+}
+
 static void write_state_file(void) {
   mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
   mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
-  int fd = open(ONION_ELFLDR_STATE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-  if(fd < 0) {
-    return;
-  }
-  char buf[32];
-  int len = snprintf(buf, sizeof(buf), "%d", getpid());
-  if(len > 0) {
-    (void)write(fd, buf, (size_t)len);
-  }
-  close(fd);
+  write_pid_marker(ONION_ELFLDR_STATE);
 }
 
 static void set_launch_busy(bool busy) {
@@ -74,17 +75,7 @@ static void set_launch_busy(bool busy) {
 
   mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
   mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
-  int fd = open(ONION_SYSTEM_TMP_ELFLDR_BUSY,
-                O_WRONLY | O_CREAT | O_TRUNC, 0666);
-  if(fd < 0) {
-    return;
-  }
-  char buf[32];
-  int len = snprintf(buf, sizeof(buf), "%d", getpid());
-  if(len > 0) {
-    (void)write(fd, buf, (size_t)len);
-  }
-  close(fd);
+  write_pid_marker(ONION_SYSTEM_TMP_ELFLDR_BUSY);
 }
 
 static int send_text(int fd, const char *text) {
