@@ -25,6 +25,10 @@
 #define ELFLDR_CONNECT_TIMEOUT_MS 2000
 #endif
 
+#ifndef ELFLDR_SEND_TIMEOUT_SEC
+#define ELFLDR_SEND_TIMEOUT_SEC 120
+#endif
+
 static int connect_port(uint16_t port) {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0)
@@ -146,6 +150,14 @@ bool elfldr_remote_send_bytes_to(uint16_t port, const uint8_t *elf,
   int fd = connect_port(port);
   if (fd < 0)
     return false;
+
+  struct timeval timeout;
+  timeout.tv_sec = ELFLDR_SEND_TIMEOUT_SEC;
+  timeout.tv_usec = 0;
+  if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0) {
+    close(fd);
+    return false;
+  }
 
   if (!send_all(fd, elf, size)) {
     close(fd);
