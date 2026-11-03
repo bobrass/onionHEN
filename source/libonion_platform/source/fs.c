@@ -45,19 +45,30 @@ bool touch_file(const char *path) {
 
 bool write_file_atomic(const char *path, const void *data, size_t size) {
   char temp_path[1024];
+  int fd = -1;
 
   if (!path || path[0] == '\0' || (size > 0 && !data))
     return false;
 
-  const int n =
-      snprintf(temp_path, sizeof(temp_path), "%s.tmp.%d", path, (int)getpid());
-  if (n < 0 || (size_t)n >= sizeof(temp_path))
-    return false;
+  for (unsigned int attempt = 0; attempt < 64; ++attempt) {
+    const int n = snprintf(temp_path, sizeof(temp_path), "%s.tmp.%d.%u", path,
+                           (int)getpid(), attempt);
+    if (n < 0 || (size_t)n >= sizeof(temp_path)) {
+      errno = ENAMETOOLONG;
+      return false;
+    }
 
-  unlink(temp_path);
-  const int fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC, 0777);
+    fd = open(temp_path, O_WRONLY | O_CREAT | O_EXCL, 0777);
+    if (fd >= 0)
+      break;
+    if (errno != EEXIST) {
+      LOG_ERROR("write_file_atomic: open %s failed (%s)", temp_path,
+                strerror(errno));
+      return false;
+    }
+  }
   if (fd < 0) {
-    LOG_ERROR("write_file_atomic: open %s failed (%s)", temp_path,
+    LOG_ERROR("write_file_atomic: no unique temporary path for %s (%s)", path,
               strerror(errno));
     return false;
   }
