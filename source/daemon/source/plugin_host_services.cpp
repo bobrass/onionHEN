@@ -1,5 +1,6 @@
 #include "plugin_host_services.hpp"
 
+#include <onion/fs.h>
 #include <onion/log.h>
 #include <onion/notify.h>
 #include <onion/plugin_manager.hpp>
@@ -50,19 +51,9 @@ bool read_file(const std::string &path, std::string &out) {
 }
 
 bool write_file(const std::string &path, const std::string &body) {
-  const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-  if (fd < 0) return false;
-  size_t offset = 0;
-  while (offset < body.size()) {
-    const ssize_t count =
-        write(fd, body.data() + offset, body.size() - offset);
-    if (count <= 0) {
-      close(fd);
-      return false;
-    }
-    offset += static_cast<size_t>(count);
-  }
-  return close(fd) == 0;
+  if (body.size() > kMaxConfigFile) return false;
+  return write_file_atomic_with_mode(path.c_str(), body.data(), body.size(),
+                                     0666);
 }
 
 } // namespace
