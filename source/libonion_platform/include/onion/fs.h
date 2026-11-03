@@ -30,8 +30,9 @@ bool write_file_atomic(const char *path, const void *data, size_t size);
 bool mkdir_tree(const char *path);
 
 /**
- * Recursively delete a directory tree. Returns false if traversal or deletion
- * fails.
+ * Recursively delete a directory tree. Rejects root paths, "." or ".."
+ * components, and symlinks in the target path. Returns false if traversal or
+ * deletion fails.
  */
 bool rmtree(const char *path);
 
@@ -40,7 +41,8 @@ typedef void (*onion_fs_progress_fn)(size_t completed, size_t total,
 
 /**
  * Recursively delete a tree and report only entries successfully removed.
- * Returns false if traversal or deletion fails.
+ * Uses the same target-path restrictions as rmtree() and returns false if
+ * traversal or deletion fails.
  */
 bool rmtree_with_progress(const char *path, onion_fs_progress_fn progress,
                           void *user);

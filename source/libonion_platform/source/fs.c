@@ -23,6 +23,85 @@ static bool is_directory_entry(const char *path, unsigned char type) {
   return S_ISDIR(st.st_mode);
 }
 
+static bool validate_rmtree_target(const char *path) {
+  if (!path || !path[0]) {
+    errno = EINVAL;
+    return false;
+  }
+
+  bool has_component = false;
+  const char *component = path;
+  while (*component) {
+    while (*component == '/')
+      ++component;
+    if (!*component)
+      break;
+
+    const char *end = component;
+    while (*end && *end != '/')
+      ++end;
+    const size_t length = (size_t)(end - component);
+    if ((length == 1 && component[0] == '.') ||
+        (length == 2 && component[0] == '.' && component[1] == '.')) {
+      errno = EINVAL;
+      return false;
+    }
+    has_component = true;
+    component = end;
+  }
+
+  if (!has_component) {
+    errno = EBUSY;
+    return false;
+  }
+  return true;
+}
+
+static bool is_real_directory_path(const char *path) {
+  char checked[1024];
+  const size_t original_length = strlen(path);
+  size_t length = original_length;
+
+  /* lstat("link/" or "link/.") follows the final symlink. */
+  for (;;) {
+    while (length > 1 && path[length - 1] == '/')
+      --length;
+    if (length > 2 && path[length - 2] == '/' && path[length - 1] == '.') {
+      length -= 2;
+      continue;
+    }
+    break;
+  }
+
+  if (length >= sizeof(checked)) {
+    errno = ENAMETOOLONG;
+    return false;
+  }
+  memcpy(checked, path, length);
+  checked[length] = '\0';
+
+  /* Reject existing symlinks in any component before opendir follows them. */
+  for (size_t i = 0; i <= length; ++i) {
+    if (checked[i] != '/' && checked[i] != '\0')
+      continue;
+    if (i == 0 || checked[i - 1] == '/')
+      continue;
+
+    const char separator = checked[i];
+    checked[i] = '\0';
+    struct stat st;
+    const int stat_result = lstat(checked, &st);
+    checked[i] = separator;
+    if (stat_result != 0)
+      return false;
+    if (!S_ISDIR(st.st_mode)) {
+      errno = ENOTDIR;
+      return false;
+    }
+  }
+  return true;
+}
+
 bool if_exists(const char *path) {
   struct stat buffer;
   if (!path) {
@@ -214,6 +293,11 @@ static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
     return false;
   }
 
+  if (!is_real_directory_path(path)) {
+    LOG_ERROR("Path is not a directory: %s: %s", path, strerror(errno));
+    return false;
+  }
+
   DIR *dir = opendir(path);
   if (dir == NULL) {
     LOG_ERROR("Error opening directory %s", path);
@@ -282,6 +366,11 @@ static bool rmtree_impl(const char *path, onion_fs_progress_fn progress,
 }
 
 bool rmtree(const char *path) {
+  if (!validate_rmtree_target(path)) {
+    LOG_ERROR("Refusing unsafe recursive-delete path: %s",
+              path ? path : "(null)");
+    return false;
+  }
   return rmtree_impl(path, NULL, NULL, NULL, 0);
 }
 
@@ -289,7 +378,13 @@ bool rmtree_with_progress(const char *path, onion_fs_progress_fn progress,
                           void *user) {
   size_t completed = 0;
   size_t total;
-  if (path == NULL) {
+  if (!validate_rmtree_target(path)) {
+    LOG_ERROR("Refusing unsafe recursive-delete path: %s",
+              path ? path : "(null)");
+    return false;
+  }
+  if (!is_real_directory_path(path)) {
+    LOG_ERROR("Path is not a directory: %s: %s", path, strerror(errno));
     return false;
   }
   if (!count_tree_entries(path, &total)) {
