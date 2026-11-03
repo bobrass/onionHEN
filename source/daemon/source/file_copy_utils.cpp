@@ -65,27 +65,87 @@ void calculateSize(uint64_t size, char *result) {
 bool copyFile(const char *source, const char *destination) {
   FILE *src = fopen(source, "rb");
   if (src == NULL) {
+    const int open_error = errno;
     onion_notify(false, "notify.fs.copy_file", source);
-    LOG_ERROR("copyFile failed for %s", source);
+    LOG_ERROR("copyFile failed to open %s: %s", source,
+              strerror(open_error));
+    errno = open_error;
+    return false;
+  }
+
+  struct stat source_stat;
+  struct stat destination_stat;
+  if (fstat(fileno(src), &source_stat) == 0 &&
+      stat(destination, &destination_stat) == 0 &&
+      source_stat.st_dev == destination_stat.st_dev &&
+      source_stat.st_ino == destination_stat.st_ino) {
+    fclose(src);
+    errno = EINVAL;
+    onion_notify(false, "notify.fs.copy_file", destination);
+    LOG_ERROR("copyFile source and destination refer to the same file: %s",
+              source);
     return false;
   }
 
   FILE *dest = fopen(destination, "wb");
   if (dest == NULL) {
+    const int open_error = errno;
     onion_notify(false, "notify.fs.copy_file", destination);
-    LOG_ERROR("copyFile failed for %s", destination);
+    LOG_ERROR("copyFile failed to open %s: %s", destination,
+              strerror(open_error));
     fclose(src);
+    errno = open_error;
     return false;
   }
 
   char buffer[1024];
-  size_t bytes = 0;
-  while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0)
-    fwrite(buffer, 1, bytes, dest);
+  bool success = true;
+  int copy_error = 0;
+  for (;;) {
+    errno = 0;
+    const size_t bytes = fread(buffer, 1, sizeof(buffer), src);
+    const int read_error = ferror(src) ? (errno != 0 ? errno : EIO) : 0;
+    if (bytes > 0) {
+      errno = 0;
+      if (fwrite(buffer, 1, bytes, dest) != bytes) {
+        success = false;
+        copy_error = errno != 0 ? errno : EIO;
+        break;
+      }
+    }
+    if (read_error != 0) {
+      success = false;
+      copy_error = read_error;
+      break;
+    }
+    if (bytes < sizeof(buffer))
+      break;
+  }
 
-  fclose(src);
-  fclose(dest);
-  return true;
+  errno = 0;
+  const int source_close_result = fclose(src);
+  if (source_close_result != 0 && success) {
+    success = false;
+    copy_error = errno != 0 ? errno : EIO;
+  }
+  errno = 0;
+  const int destination_close_result = fclose(dest);
+  if (destination_close_result != 0 && success) {
+    success = false;
+    copy_error = errno != 0 ? errno : EIO;
+  }
+
+  if (success)
+    return true;
+
+  if (unlink(destination) != 0 && errno != ENOENT)
+    LOG_WARN("failed to remove incomplete copy %s: %s", destination,
+             strerror(errno));
+  errno = copy_error;
+  onion_notify(false, "notify.fs.copy_file", source);
+  LOG_ERROR("copyFile failed for %s -> %s: %s", source, destination,
+            strerror(copy_error));
+  return false;
 }
 
 bool copyRecursive(const char *source, const char *destination) {
