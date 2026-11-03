@@ -122,6 +122,27 @@ bool copyFile(const char *source, const char *destination) {
     return false;
   }
 
+  struct stat sourceStat;
+  struct stat destinationStat;
+  if (fstat(fileno(src), &sourceStat) != 0) {
+    const int savedErrno = errno;
+    fclose(src);
+    errno = savedErrno;
+    onion_notify(false, "notify.fs.copy_file", source);
+    LOG_ERROR("copyFile could not stat source %s", source);
+    return false;
+  }
+  if (stat(destination, &destinationStat) == 0 &&
+      sourceStat.st_dev == destinationStat.st_dev &&
+      sourceStat.st_ino == destinationStat.st_ino) {
+    fclose(src);
+    errno = EINVAL;
+    onion_notify(false, "notify.fs.copy_file", destination);
+    LOG_ERROR("copyFile refused identical source and destination %s",
+              destination);
+    return false;
+  }
+
   FILE *dest = fopen(destination, "wb");
   if (dest == NULL) {
     onion_notify(false, "notify.fs.copy_file", destination);
@@ -131,13 +152,37 @@ bool copyFile(const char *source, const char *destination) {
   }
 
   char buffer[1024];
+  bool copyOk = true;
+  int copyErrno = 0;
   size_t bytes = 0;
-  while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0)
-    fwrite(buffer, 1, bytes, dest);
+  errno = 0;
+  while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+    if (fwrite(buffer, 1, bytes, dest) != bytes) {
+      copyOk = false;
+      copyErrno = errno != 0 ? errno : EIO;
+      break;
+    }
+  }
+  if (ferror(src)) {
+    copyOk = false;
+    copyErrno = errno != 0 ? errno : EIO;
+  }
 
-  fclose(src);
-  fclose(dest);
-  return true;
+  if (fclose(src) != 0) {
+    copyOk = false;
+    if (copyErrno == 0) copyErrno = errno != 0 ? errno : EIO;
+  }
+  if (fclose(dest) != 0) {
+    copyOk = false;
+    if (copyErrno == 0) copyErrno = errno != 0 ? errno : EIO;
+  }
+  if (!copyOk) {
+    errno = copyErrno;
+    onion_notify(false, "notify.fs.copy_file", destination);
+    LOG_ERROR("copyFile failed while copying %s to %s: %s", source,
+              destination, strerror(errno));
+  }
+  return copyOk;
 }
 
 bool copyRecursive(const char *source, const char *destination) {
