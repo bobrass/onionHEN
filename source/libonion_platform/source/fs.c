@@ -98,6 +98,25 @@ bool write_file_atomic(const char *path, const void *data, size_t size) {
   return true;
 }
 
+static bool mkdir_or_existing_directory(const char *path) {
+  if (mkdir(path, 0777) == 0) {
+    return true;
+  }
+  if (errno != EEXIST) {
+    return false;
+  }
+
+  struct stat st;
+  if (stat(path, &st) != 0) {
+    return false;
+  }
+  if (!S_ISDIR(st.st_mode)) {
+    errno = ENOTDIR;
+    return false;
+  }
+  return true;
+}
+
 bool mkdir_tree(const char *path) {
   char current[1024];
   size_t n;
@@ -117,12 +136,12 @@ bool mkdir_tree(const char *path) {
       continue;
     }
     current[i] = '\0';
-    if (current[0] != '\0' && mkdir(current, 0777) != 0 && errno != EEXIST) {
+    if (current[0] != '\0' && !mkdir_or_existing_directory(current)) {
       return false;
     }
     current[i] = '/';
   }
-  return mkdir(current, 0777) == 0 || errno == EEXIST;
+  return mkdir_or_existing_directory(current);
 }
 
 static size_t count_tree_entries(const char *path) {
