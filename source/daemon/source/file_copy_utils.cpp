@@ -14,41 +14,84 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdint.h>
 
-uint64_t calculateTotalSize(const char *path) {
-  long total = 0;
-  DIR *dir = opendir(path);
-  if (dir == NULL) {
-    onion_notify(false, "notify.fs.size_failed", path);
-    return 0;
+static bool add_size(uint64_t amount, uint64_t *total) {
+  if (amount > UINT64_MAX - *total) {
+    errno = EOVERFLOW;
+    return false;
   }
+  *total += amount;
+  return true;
+}
 
+static bool calculate_total_size_recursive(const char *path,
+                                           uint64_t *size_out) {
+  DIR *dir = opendir(path);
+  if (dir == NULL)
+    return false;
+
+  const auto fail = [dir](int error) {
+    closedir(dir);
+    errno = error;
+    return false;
+  };
+  uint64_t total = 0;
   struct dirent *entry;
   char fullPath[1024];
-  while ((entry = readdir(dir)) != NULL) {
+  for (;;) {
+    errno = 0;
+    entry = readdir(dir);
+    if (entry == NULL) {
+      if (errno != 0)
+        return fail(errno);
+      break;
+    }
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
 
-    snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
+    const int pathLength =
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
+    if (pathLength < 0 || static_cast<size_t>(pathLength) >= sizeof(fullPath))
+      return fail(pathLength < 0 ? EIO : ENAMETOOLONG);
+
     struct stat st;
     if (lstat(fullPath, &st) != 0)
-      continue;
+      return fail(errno);
     if (S_ISLNK(st.st_mode)) {
       if (stat(fullPath, &st) != 0)
-        continue;
+        return fail(errno);
       // Do not recurse through directory symlinks: they can point back to
       // this directory and make size calculation recurse forever.
       if (S_ISDIR(st.st_mode))
         continue;
     }
-    if (S_ISDIR(st.st_mode))
-      total += static_cast<long>(calculateTotalSize(fullPath));
-    else if (S_ISREG(st.st_mode))
-      total += st.st_size;
+    if (S_ISDIR(st.st_mode)) {
+      uint64_t childSize = 0;
+      if (!calculate_total_size_recursive(fullPath, &childSize) ||
+          !add_size(childSize, &total))
+        return fail(errno);
+    } else if (S_ISREG(st.st_mode)) {
+      if (st.st_size < 0)
+        return fail(EIO);
+      if (!add_size(static_cast<uint64_t>(st.st_size), &total))
+        return fail(errno);
+    }
   }
 
-  closedir(dir);
-  return static_cast<uint64_t>(total);
+  if (closedir(dir) != 0)
+    return false;
+  *size_out = total;
+  return true;
+}
+
+uint64_t calculateTotalSize(const char *path) {
+  uint64_t total = 0;
+  if (!path || !calculate_total_size_recursive(path, &total)) {
+    onion_notify(false, "notify.fs.size_failed", path ? path : "");
+    return 0;
+  }
+  return total;
 }
 
 static const char *sizes[] = {"EiB", "PiB", "TiB", "GiB", "MiB", "KiB", "B"};
