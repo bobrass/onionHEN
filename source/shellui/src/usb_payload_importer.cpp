@@ -27,6 +27,22 @@ std::string destination_name(const std::string &name) {
   return name.substr(0, name.size() - 4) + ".elf";
 }
 
+DIR *open_directory_retry(const char *path) {
+  DIR *dir = nullptr;
+  do {
+    dir = opendir(path);
+  } while (!dir && errno == EINTR);
+  return dir;
+}
+
+int lstat_retry(const char *path, struct stat *st) {
+  int result = 0;
+  do {
+    result = lstat(path, st);
+  } while (result != 0 && errno == EINTR);
+  return result;
+}
+
 } // namespace
 
 std::vector<Entry> scan(const std::string &usb_prefix,
@@ -39,12 +55,12 @@ std::vector<Entry> scan(const std::string &usb_prefix,
     *scan_complete = true;
   for (unsigned index = 0; index < 8; ++index) {
     std::string mount = usb_prefix + std::to_string(index);
-    DIR *dir = opendir(mount.c_str());
+    DIR *dir = open_directory_retry(mount.c_str());
     bool open_incomplete = false;
     if (!dir && usb_prefix == kUsbPrefix) {
       const int primary_error = errno;
       mount = "/mnt/usb" + std::to_string(index);
-      dir = opendir(mount.c_str());
+      dir = open_directory_retry(mount.c_str());
       if (primary_error != ENOENT && primary_error != ENODEV &&
           primary_error != ENXIO) {
         open_incomplete = true;
@@ -63,7 +79,10 @@ std::vector<Entry> scan(const std::string &usb_prefix,
       *device_found = true;
     for (;;) {
       errno = 0;
-      dirent *item = readdir(dir);
+      dirent *item = nullptr;
+      do {
+        item = readdir(dir);
+      } while (!item && errno == EINTR);
       if (!item) {
         if (errno != 0 && scan_complete)
           *scan_complete = false;
@@ -74,7 +93,7 @@ std::vector<Entry> scan(const std::string &usb_prefix,
         continue;
       const std::string source = mount + "/" + name;
       struct stat st {};
-      if (lstat(source.c_str(), &st) != 0) {
+      if (lstat_retry(source.c_str(), &st) != 0) {
         // A file disappearing while the directory is scanned is a normal
         // race. Other metadata errors mean we could not complete the listing.
         if (errno != ENOENT && scan_complete)
@@ -95,7 +114,7 @@ std::vector<Entry> scan(const std::string &usb_prefix,
       entry.usb_index = index;
       const std::string installed_path =
           destination + "/" + destination_name(name);
-      entry.installed = lstat(installed_path.c_str(), &st) == 0;
+      entry.installed = lstat_retry(installed_path.c_str(), &st) == 0;
       if (!entry.installed && errno != ENOENT && scan_complete)
         *scan_complete = false;
       entries.push_back(std::move(entry));
