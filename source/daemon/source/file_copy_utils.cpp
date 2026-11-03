@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 uint64_t calculateTotalSize(const char *path) {
   long total = 0;
@@ -95,7 +96,60 @@ bool copyRecursive(const char *source, const char *destination) {
     return false;
   }
 
-  mkdir(destination, 0777);
+  bool createdDestination = false;
+  if (mkdir(destination, 0777) == 0) {
+    createdDestination = true;
+  } else if (errno != EEXIST) {
+    const int savedErrno = errno;
+    closedir(dir);
+    errno = savedErrno;
+    onion_notify(false, "notify.fs.copy_recursive", destination);
+    return false;
+  }
+
+  struct stat destinationStat;
+  if (stat(destination, &destinationStat) != 0) {
+    const int savedErrno = errno;
+    closedir(dir);
+    errno = savedErrno;
+    onion_notify(false, "notify.fs.copy_recursive", destination);
+    return false;
+  }
+  if (!S_ISDIR(destinationStat.st_mode)) {
+    closedir(dir);
+    errno = ENOTDIR;
+    onion_notify(false, "notify.fs.copy_recursive", destination);
+    return false;
+  }
+
+  char *resolvedSource = realpath(source, NULL);
+  char *resolvedDestination = realpath(destination, NULL);
+  if (!resolvedSource || !resolvedDestination) {
+    const int savedErrno = errno != 0 ? errno : EIO;
+    free(resolvedSource);
+    free(resolvedDestination);
+    closedir(dir);
+    errno = savedErrno;
+    onion_notify(false, "notify.fs.copy_recursive", source);
+    return false;
+  }
+  const size_t sourceLength = strlen(resolvedSource);
+  const bool destinationInsideSource =
+      strncmp(resolvedSource, resolvedDestination, sourceLength) == 0 &&
+      (resolvedDestination[sourceLength] == '\0' ||
+       (sourceLength == 1 && resolvedSource[0] == '/') ||
+       resolvedDestination[sourceLength] == '/');
+  free(resolvedSource);
+  free(resolvedDestination);
+  if (destinationInsideSource) {
+    if (createdDestination) {
+      (void)rmdir(destination);
+    }
+    closedir(dir);
+    errno = EINVAL;
+    onion_notify(false, "notify.fs.copy_recursive", destination);
+    return false;
+  }
 
   struct dirent *entry;
   char srcPath[1024];
@@ -104,14 +158,33 @@ bool copyRecursive(const char *source, const char *destination) {
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
 
-    snprintf(srcPath, sizeof(srcPath), "%s/%s", source, entry->d_name);
-    snprintf(destPath, sizeof(destPath), "%s/%s", destination, entry->d_name);
+    const int srcLength =
+        snprintf(srcPath, sizeof(srcPath), "%s/%s", source, entry->d_name);
+    const int destLength = snprintf(destPath, sizeof(destPath), "%s/%s",
+                                    destination, entry->d_name);
+    if (srcLength < 0 || (size_t)srcLength >= sizeof(srcPath) ||
+        destLength < 0 || (size_t)destLength >= sizeof(destPath)) {
+      closedir(dir);
+      errno = ENAMETOOLONG;
+      onion_notify(false, "notify.fs.copy_recursive", source);
+      return false;
+    }
 
     struct stat st;
-    if (stat(srcPath, &st) != 0)
-      continue;
+    if (stat(srcPath, &st) != 0) {
+      const int savedErrno = errno;
+      closedir(dir);
+      errno = savedErrno;
+      onion_notify(false, "notify.fs.copy_recursive", srcPath);
+      return false;
+    }
     if (S_ISDIR(st.st_mode)) {
-      copyRecursive(srcPath, destPath);
+      if (!copyRecursive(srcPath, destPath)) {
+        const int savedErrno = errno;
+        closedir(dir);
+        errno = savedErrno;
+        return false;
+      }
     } else if (S_ISREG(st.st_mode)) {
       if (!copyFile(srcPath, destPath)) {
         onion_notify(false, "notify.fs.copy_recursive", srcPath);
