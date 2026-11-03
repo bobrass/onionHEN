@@ -64,7 +64,8 @@ bool cheatDirectoryAvailable() {
   return true;
 }
 
-bool isRegularEntry(const char *directory, const struct dirent *entry) {
+bool isRegularEntry(const char *directory, const struct dirent *entry,
+                    int *scan_error) {
   if (directory == nullptr || entry == nullptr) {
     return false;
   }
@@ -83,10 +84,21 @@ bool isRegularEntry(const char *directory, const struct dirent *entry) {
   const int written =
       std::snprintf(path, sizeof(path), "%s/%s", directory, entry->d_name);
   if (written < 0 || static_cast<size_t>(written) >= sizeof(path)) {
+    if (scan_error && *scan_error == 0)
+      *scan_error = ENAMETOOLONG;
     return false;
   }
   struct stat st {};
-  return ::stat(path, &st) == 0 && S_ISREG(st.st_mode);
+  int result;
+  do {
+    result = ::stat(path, &st);
+  } while (result != 0 && errno == EINTR);
+  if (result != 0) {
+    if (errno != ENOENT && scan_error && *scan_error == 0)
+      *scan_error = errno;
+    return false;
+  }
+  return S_ISREG(st.st_mode);
 }
 
 struct ScannedCandidate {
@@ -100,10 +112,23 @@ std::vector<ScannedCandidate> scanMatchingPaths(
   std::vector<ScannedCandidate> matches;
   DIR *directory = ::opendir(ONION_CHEATS_DIR);
   if (directory == nullptr) {
+    const int open_error = errno;
+    LOG_WARN("[cheats] cannot open source directory %s: %s",
+             ONION_CHEATS_DIR, std::strerror(open_error));
     return matches;
   }
 
-  while (const struct dirent *entry = ::readdir(directory)) {
+  int scan_error = 0;
+  for (;;) {
+    errno = 0;
+    const struct dirent *entry = ::readdir(directory);
+    if (entry == nullptr) {
+      if (errno == EINTR)
+        continue;
+      if (errno != 0 && scan_error == 0)
+        scan_error = errno;
+      break;
+    }
     if (entry->d_name[0] == '.') {
       continue;
     }
@@ -122,7 +147,7 @@ std::vector<ScannedCandidate> scanMatchingPaths(
          std::strcmp(parts.version, version.c_str()) != 0)) {
       continue;
     }
-    if (!isRegularEntry(ONION_CHEATS_DIR, entry)) {
+    if (!isRegularEntry(ONION_CHEATS_DIR, entry, &scan_error)) {
       LOG_DEBUG("[cheats] skip %s: not a regular file", entry->d_name);
       continue;
     }
@@ -139,7 +164,14 @@ std::vector<ScannedCandidate> scanMatchingPaths(
               allow_any_process ? " (title browsing)" : "");
     matches.push_back({parts, entry->d_name});
   }
-  ::closedir(directory);
+  if (::closedir(directory) != 0 && scan_error == 0)
+    scan_error = errno;
+  if (scan_error != 0) {
+    LOG_WARN("[cheats] source scan incomplete: path=%s error=%d (%s); "
+             "using %zu readable matches",
+             ONION_CHEATS_DIR, scan_error, std::strerror(scan_error),
+             matches.size());
+  }
   std::sort(matches.begin(), matches.end(),
             [](const ScannedCandidate &lhs, const ScannedCandidate &rhs) {
               return onion_cheat_filename_compare(&lhs.parts, lhs.name.c_str(),
