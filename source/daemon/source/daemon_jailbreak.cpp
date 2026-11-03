@@ -1227,6 +1227,15 @@ private:
                 static_cast<int>(target_pid), path.c_str());
       return clear_request(path);
     }
+    const ExecIdentity target_identity = read_exec_identity(target_pid);
+    if (target_identity.app_info_rc != 0 || target_identity.tid != tid) {
+      LOG_ERROR("[JB] request tid=%s targets pid=%d tid=%s app_info_rc=%d; "
+                "clearing request %s",
+                tid.c_str(), static_cast<int>(target_pid),
+                target_identity.tid.c_str(), target_identity.app_info_rc,
+                path.c_str());
+      return clear_request(path);
+    }
     if (KERNEL_ADDRESS_ALLPROC == 0) {
       LOG_ERROR("[JB] KERNEL_ADDRESS_ALLPROC=0; clearing request %s",
                 path.c_str());
