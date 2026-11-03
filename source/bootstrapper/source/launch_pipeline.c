@@ -153,11 +153,18 @@ static void launch_kstuff(LaunchContext *context, uint32_t firmware_version,
                           bool autoload) {
   char probe[100] = {0};
   const bool disabled_by_usb = if_exists("/mnt/usb0/no_kstuff");
+  const bool disabled_by_internal =
+      if_exists("/data/OnionHEN/no_kstuff") ||
+      if_exists("/user/data/OnionHEN/no_kstuff");
+  const bool disabled_by_marker = disabled_by_usb || disabled_by_internal;
+  const char *skip_reason =
+      disabled_by_usb ? "usb no_kstuff"
+                      : disabled_by_internal ? "internal no_kstuff"
+                                             : "kstuff.autoload=false";
   if (firmware_version < 0x3000000) {
-    if (disabled_by_usb || !autoload) {
+    if (disabled_by_marker || !autoload) {
       LOG_INFO("kstuff load skipped (%s; firmware=0x%08x)",
-               disabled_by_usb ? "usb no_kstuff" : "kstuff.autoload=false",
-               (unsigned)firmware_version);
+               skip_reason, (unsigned)firmware_version);
     }
     onion_ready_signal(ONION_READY_KSTUFF);
     return;
@@ -173,10 +180,9 @@ static void launch_kstuff(LaunchContext *context, uint32_t firmware_version,
     return;
   }
 
-  if (disabled_by_usb || !autoload) {
+  if (disabled_by_marker || !autoload) {
     LOG_INFO("kstuff load skipped (%s; firmware=0x%08x)",
-             disabled_by_usb ? "usb no_kstuff" : "kstuff.autoload=false",
-             (unsigned)firmware_version);
+             skip_reason, (unsigned)firmware_version);
     onion_ready_signal(ONION_READY_KSTUFF);
     return;
   }
