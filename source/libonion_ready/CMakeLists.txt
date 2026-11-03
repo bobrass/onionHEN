@@ -12,5 +12,9 @@ set(CMAKE_C_FLAGS "${ONION_PS5_TARGET_FLAGS_MARCH} -fPIC -fstack-protector-all -
 
 target_include_directories(${PROJECT_NAME}
   PUBLIC "${PROJECT_ROOT}/include"
+  PRIVATE "${PROJECT_ROOT}/libonion_platform/include"
 )
+
+target_link_libraries(${PROJECT_NAME} PUBLIC onion_platform)
+add_dependencies(${PROJECT_NAME} onion_platform)
 

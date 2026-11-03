@@ -1,5 +1,6 @@
 /* Copyright (C) 2025 OnionHEN / LightningMods */
 
+#include <onion/fs.h>
 #include <onion/ready.h>
 
 #include <errno.h>
@@ -40,14 +41,7 @@ static bool write_path(const char *path, const char *value) {
   if (!path || !value) {
     return false;
   }
-  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-  if (fd < 0) {
-    return false;
-  }
-  size_t len = strlen(value);
-  ssize_t written = write(fd, value, len);
-  close(fd);
-  return written == (ssize_t)len;
+  return write_file_atomic_with_mode(path, value, strlen(value), 0666);
 }
 
 static bool touch_path(const char *path) {
@@ -107,17 +101,34 @@ static bool read_pid_path(const char *path, pid_t *pid_out) {
   if (fd < 0) {
     return false;
   }
-  ssize_t n = read(fd, value, sizeof(value) - 1);
+  size_t length = 0;
+  bool read_error = false;
+  while (length < sizeof(value)) {
+    const ssize_t count = read(fd, value + length, sizeof(value) - length);
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count < 0) {
+      read_error = true;
+      break;
+    }
+    if (count == 0)
+      break;
+    length += (size_t)count;
+  }
   close(fd);
-  if (n <= 0 || n >= (ssize_t)sizeof(value)) {
+  if (read_error || length == 0 || length == sizeof(value)) {
     return false;
   }
-  value[n] = '\0';
+  for (size_t i = 0; i < length; ++i) {
+    if (value[i] < '0' || value[i] > '9')
+      return false;
+  }
+  value[length] = '\0';
 
   errno = 0;
   char *end = NULL;
   long parsed = strtol(value, &end, 10);
-  if (errno != 0 || end == value || *end != '\0' || parsed <= 0 ||
+  if (errno != 0 || end != value + length || parsed <= 0 ||
       parsed > INT_MAX) {
     return false;
   }
