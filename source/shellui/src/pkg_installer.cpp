@@ -166,8 +166,12 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
       continue;
     }
     const std::string shellui_path = pkg_search_path_shellui_view(system_path);
-    DIR *directory = shellui_path.empty() ? nullptr
-                                           : ::opendir(shellui_path.c_str());
+    DIR *directory = nullptr;
+    if (!shellui_path.empty()) {
+      do {
+        directory = ::opendir(shellui_path.c_str());
+      } while (!directory && errno == EINTR);
+    }
     if (!directory) {
       ++result.incomplete_paths;
       continue;
@@ -180,6 +184,8 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
       errno = 0;
       const struct dirent *entry = ::readdir(directory);
       if (!entry) {
+        if (errno == EINTR)
+          continue;
         scan_failed = errno != 0;
         break;
       }
@@ -195,7 +201,11 @@ PkgInstallerScan scan_pkg_search_paths(const std::string *system_paths,
         shellui_file.push_back('/');
       shellui_file += entry->d_name;
       struct stat st {};
-      if (::stat(shellui_file.c_str(), &st) != 0) {
+      int stat_result;
+      do {
+        stat_result = ::stat(shellui_file.c_str(), &st);
+      } while (stat_result != 0 && errno == EINTR);
+      if (stat_result != 0) {
         scan_failed = true;
         continue;
       }
