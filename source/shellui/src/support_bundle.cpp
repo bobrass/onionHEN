@@ -5,6 +5,7 @@
 
 #include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <fcntl.h>
 #include <string>
@@ -15,18 +16,25 @@
 namespace {
 constexpr size_t kTailLimit = 128 * 1024;
 constexpr size_t kCopyBufferSize = 16 * 1024;
-constexpr const char *kOutputDirectory = "/data/OnionHEN/support";
+// ShellUI sees the console's /data tree through its /user mount namespace.
+constexpr const char *kOutputDirectory = "/user/data/OnionHEN/support";
+constexpr const char *kDisplayOutputDirectory = "/data/OnionHEN/support";
 
 struct LogSource {
   const char *label;
-  const char *path;
+  const char *display_path;
+  const char *shellui_path;
 };
 
 constexpr LogSource kLogs[] = {
-    {"Main log", "/data/OnionHEN/OnionHEN.log"},
-    {"Main crash log", "/data/OnionHEN/OnionHEN_crash.log"},
-    {"Utility log", "/data/OnionHEN/OnionHEN_util_daemon.log"},
-    {"Utility crash log", "/data/OnionHEN/OnionHEN_util_crash.log"},
+    {"Main log", "/data/OnionHEN/OnionHEN.log",
+     "/user/data/OnionHEN/OnionHEN.log"},
+    {"Main crash log", "/data/OnionHEN/OnionHEN_crash.log",
+     "/user/data/OnionHEN/OnionHEN_crash.log"},
+    {"Utility log", "/data/OnionHEN/OnionHEN_util_daemon.log",
+     "/user/data/OnionHEN/OnionHEN_util_daemon.log"},
+    {"Utility crash log", "/data/OnionHEN/OnionHEN_util_crash.log",
+     "/user/data/OnionHEN/OnionHEN_util_crash.log"},
 };
 
 bool write_all(int fd, const void *data, size_t size) {
@@ -49,10 +57,10 @@ bool write_text(int fd, const std::string &text) {
 
 bool append_log(int output_fd, const LogSource &log) {
   if (!write_text(output_fd, "\n\n===== " + std::string(log.label) +
-                                  " (" + log.path + ") =====\n"))
+                                  " (" + log.display_path + ") =====\n"))
     return false;
 
-  const int input_fd = open(log.path, O_RDONLY);
+  const int input_fd = open(log.shellui_path, O_RDONLY);
   if (input_fd < 0) {
     return write_text(output_fd, "[unavailable: could not open]\n");
   }
@@ -143,7 +151,8 @@ bool create_support_bundle(std::string &output_path) {
       unlink(path);
       return false;
     }
-    output_path = path;
+    output_path = kDisplayOutputDirectory;
+    output_path += path + std::strlen(kOutputDirectory);
     return true;
   }
   return false;
