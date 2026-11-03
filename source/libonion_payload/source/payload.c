@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,16 +59,40 @@ void onion_payload_pid_path(char *out, size_t out_sz, const char *title_id) {
 }
 
 pid_t onion_payload_read_pid_file(const char *pid_path) {
+  if (!pid_path || !pid_path[0])
+    return -1;
   const int f = open(pid_path, O_RDONLY);
   if (f < 0)
     return -1;
   char t[32];
-  const int r = (int)read(f, t, sizeof(t) - 1);
+  size_t length = 0;
+  bool read_error = false;
+  while (length < sizeof(t)) {
+    const ssize_t count = read(f, t + length, sizeof(t) - length);
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count < 0) {
+      read_error = true;
+      break;
+    }
+    if (count == 0)
+      break;
+    length += (size_t)count;
+  }
   close(f);
-  if (r <= 0)
+  if (read_error || length == 0 || length == sizeof(t))
     return -1;
-  t[r] = '\0';
-  return (pid_t)atoi(t);
+  for (size_t i = 0; i < length; ++i) {
+    if (t[i] < '0' || t[i] > '9')
+      return -1;
+  }
+  t[length] = '\0';
+  errno = 0;
+  char *end = NULL;
+  const long value = strtol(t, &end, 10);
+  if (errno != 0 || end != t + length || value > INT_MAX)
+    return -1;
+  return (pid_t)value;
 }
 
 void onion_payload_write_pid_file(const char *pid_path, pid_t pid) {

@@ -7,12 +7,10 @@
 #include "external_symbols.hpp"
 
 #include <onion/ipc_client.hpp>
+#include <onion/payload.h>
 #include <onion/proc_query.h>
 #include <onion/system_tmp.h>
 
-#include <cstdio>
-#include <cstdlib>
-#include <fcntl.h>
 #include <unistd.h>
 
 static pid_t shellui_payload_drop_stale_pid(const char *pid_path,
@@ -29,21 +27,7 @@ void shellui_payload_pid_path(char *out, size_t out_sz, const char *key) {
 }
 
 pid_t shellui_payload_read_pid_file(const char *pid_path) {
-  if (!pid_path || !pid_path[0]) {
-    return -1;
-  }
-  const int f = open(pid_path, O_RDONLY);
-  if (f < 0) {
-    return -1;
-  }
-  char t[32];
-  const int r = (int)read(f, t, sizeof(t) - 1);
-  close(f);
-  if (r <= 0) {
-    return -1;
-  }
-  t[r] = '\0';
-  return (pid_t)atoi(t);
+  return onion_payload_read_pid_file(pid_path);
 }
 
 pid_t shellui_payload_validate_pid(pid_t pid, const char *pid_path,
