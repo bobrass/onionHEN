@@ -18,6 +18,22 @@ namespace {
 
 constexpr uint64_t kPageSize = 0x4000ULL;
 
+const char *dmap_failure_stage_name(onion_proc_dmap_failure_stage stage) {
+  switch (stage) {
+  case ONION_PROC_DMAP_FAILURE_ARGUMENT:
+    return "argument";
+  case ONION_PROC_DMAP_FAILURE_CONTEXT:
+    return "process-context";
+  case ONION_PROC_DMAP_FAILURE_TRANSLATION:
+    return "virtual-translation";
+  case ONION_PROC_DMAP_FAILURE_COPY:
+    return "physical-copy";
+  case ONION_PROC_DMAP_FAILURE_NONE:
+  default:
+    return "none";
+  }
+}
+
 inline uint64_t pageAlignDown(uint64_t v) {
   return v & ~(kPageSize - 1ULL);
 }
@@ -74,10 +90,26 @@ public:
 class KdirectBackend final : public IMemoryBackend {
 public:
   int read(pid_t pid, uint64_t addr, void *buf, size_t len) override {
-    return onion_proc_copyout(pid, addr, buf, len);
+    onion_proc_dmap_failure_stage failure_stage = ONION_PROC_DMAP_FAILURE_NONE;
+    const int rc = onion_proc_copyout_with_failure(pid, addr, buf, len,
+                                                   &failure_stage);
+    if (rc < 0)
+      LOG_ERROR("[Cheat] Kdirect read failed pid=%d addr=0x%llx len=%zu "
+                "stage=%s rc=%d",
+                (int)pid, (unsigned long long)addr, len,
+                dmap_failure_stage_name(failure_stage), rc);
+    return rc;
   }
   int write(pid_t pid, uint64_t addr, const void *buf, size_t len) override {
-    return onion_proc_copyin(pid, addr, buf, len);
+    onion_proc_dmap_failure_stage failure_stage = ONION_PROC_DMAP_FAILURE_NONE;
+    const int rc = onion_proc_copyin_with_failure(pid, addr, buf, len,
+                                                  &failure_stage);
+    if (rc < 0)
+      LOG_ERROR("[Cheat] Kdirect write failed pid=%d addr=0x%llx len=%zu "
+                "stage=%s rc=%d",
+                (int)pid, (unsigned long long)addr, len,
+                dmap_failure_stage_name(failure_stage), rc);
+    return rc;
   }
   int mapCodeCave(pid_t pid, uint64_t addr, size_t len) override {
     return mapCodeCaveCommon(pid, addr, len);

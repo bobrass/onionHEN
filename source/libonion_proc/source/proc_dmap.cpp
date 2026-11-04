@@ -75,11 +75,18 @@ uint64_t virt2phys(uintptr_t addr, uint64_t dmap, uint64_t pml,
   return static_cast<uint64_t>(-1);
 }
 
-int copy_via_dmap(pid_t pid, uint64_t addr, void *buf, size_t len, bool to_proc) {
+int copy_via_dmap(pid_t pid, uint64_t addr, void *buf, size_t len, bool to_proc,
+                  onion_proc_dmap_failure_stage *failure_stage) {
+  if (failure_stage)
+    *failure_stage = ONION_PROC_DMAP_FAILURE_NONE;
+
   uint64_t cr3 = 0;
   uint64_t dmap = 0;
-  if (get_proc_cr3(pid, &cr3, &dmap) < 0)
+  if (get_proc_cr3(pid, &cr3, &dmap) < 0) {
+    if (failure_stage)
+      *failure_stage = ONION_PROC_DMAP_FAILURE_CONTEXT;
     return -1;
+  }
 
   auto *p = static_cast<uint8_t *>(buf);
   uint64_t vaddr = addr;
@@ -88,16 +95,22 @@ int copy_via_dmap(pid_t pid, uint64_t addr, void *buf, size_t len, bool to_proc)
     uint64_t phys_end = 0;
     const uint64_t phys = virt2phys(static_cast<uintptr_t>(vaddr), dmap, cr3,
                                     &phys_end);
-    if (phys == static_cast<uint64_t>(-1))
+    if (phys == static_cast<uint64_t>(-1)) {
+      if (failure_stage)
+        *failure_stage = ONION_PROC_DMAP_FAILURE_TRANSLATION;
       return -1;
+    }
     size_t chunk = static_cast<size_t>(phys_end - phys);
     if (left < chunk)
       chunk = left;
     const int rc =
         to_proc ? kernel_copyin(p, static_cast<intptr_t>(dmap + phys), chunk)
                 : kernel_copyout(static_cast<intptr_t>(dmap + phys), p, chunk);
-    if (rc != 0)
+    if (rc != 0) {
+      if (failure_stage)
+        *failure_stage = ONION_PROC_DMAP_FAILURE_COPY;
       return -1;
+    }
     vaddr += chunk;
     p += chunk;
     left -= chunk;
@@ -108,16 +121,39 @@ int copy_via_dmap(pid_t pid, uint64_t addr, void *buf, size_t len, bool to_proc)
 } // namespace
 
 extern "C" int onion_proc_copyout(pid_t pid, uint64_t va, void *dst, size_t n) {
-  if (pid <= 0 || dst == nullptr || n == 0)
+  return onion_proc_copyout_with_failure(pid, va, dst, n, nullptr);
+}
+
+extern "C" int onion_proc_copyout_with_failure(
+    pid_t pid, uint64_t va, void *dst, size_t n,
+    onion_proc_dmap_failure_stage *failure_stage) {
+  if (failure_stage)
+    *failure_stage = ONION_PROC_DMAP_FAILURE_NONE;
+  if (pid <= 0 || dst == nullptr || n == 0) {
+    if (failure_stage)
+      *failure_stage = ONION_PROC_DMAP_FAILURE_ARGUMENT;
     return -1;
-  return copy_via_dmap(pid, va, dst, n, false);
+  }
+  return copy_via_dmap(pid, va, dst, n, false, failure_stage);
 }
 
 extern "C" int onion_proc_copyin(pid_t pid, uint64_t va, const void *src,
                                  size_t n) {
-  if (pid <= 0 || src == nullptr || n == 0)
+  return onion_proc_copyin_with_failure(pid, va, src, n, nullptr);
+}
+
+extern "C" int onion_proc_copyin_with_failure(
+    pid_t pid, uint64_t va, const void *src, size_t n,
+    onion_proc_dmap_failure_stage *failure_stage) {
+  if (failure_stage)
+    *failure_stage = ONION_PROC_DMAP_FAILURE_NONE;
+  if (pid <= 0 || src == nullptr || n == 0) {
+    if (failure_stage)
+      *failure_stage = ONION_PROC_DMAP_FAILURE_ARGUMENT;
     return -1;
-  return copy_via_dmap(pid, va, const_cast<void *>(src), n, true);
+  }
+  return copy_via_dmap(pid, va, const_cast<void *>(src), n, true,
+                       failure_stage);
 }
 
 extern "C" int onion_proc_dmap_init(pid_t pid, onion_proc_dmap_ctx *ctx) {
