@@ -223,10 +223,16 @@ int inject_elf(struct proc* proc, void* elf)
     // Call until hit a breakpoint (stager ends with int3; pt_call2 waits)
     //
     const long thread_status = pt_call2(proc->pid, bootstrap, sce_ptr_mem);
+    if (thread_status == -1)
+    {
+        LOG_ERROR("[-] pt_call2 failed pid=%d errno=%d", proc->pid, errno);
+        status = false;
+        goto detach;
+    }
     if (thread_status != 0)
     {
-        LOG_ERROR("[-] remote pthread_create failed pid=%d rc=%ld errno=%d",
-                  proc->pid, thread_status, errno);
+        LOG_ERROR("[-] remote pthread_create failed pid=%d rc=%ld",
+                  proc->pid, thread_status);
         status = false;
         goto detach;
     }
