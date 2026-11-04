@@ -26,6 +26,7 @@ bool onion_payload_is_elf(const void *buf, size_t size);
 bool onion_payload_elf_key_from_name(const char *name, char *out, size_t out_sz);
 
 void onion_payload_pid_path(char *out, size_t out_sz, const char *title_id);
+/** Read a complete decimal PID marker; malformed or out-of-range text returns -1. */
 pid_t onion_payload_read_pid_file(const char *pid_path);
 /** Persist only a real payload PID (>1); otherwise remove the marker. */
 void onion_payload_write_pid_file(const char *pid_path, pid_t pid);

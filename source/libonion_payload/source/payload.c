@@ -12,6 +12,7 @@
 #include <onion/proc_query.h>
 #include <onion/system_tmp.h>
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
@@ -57,16 +58,55 @@ void onion_payload_pid_path(char *out, size_t out_sz, const char *title_id) {
 }
 
 pid_t onion_payload_read_pid_file(const char *pid_path) {
+  if (!pid_path || !pid_path[0])
+    return -1;
+
   const int f = open(pid_path, O_RDONLY);
   if (f < 0)
     return -1;
+
   char t[32];
-  const int r = (int)read(f, t, sizeof(t) - 1);
+  size_t used = 0;
+  while (used < sizeof(t)) {
+    const ssize_t n = read(f, t + used, sizeof(t) - used);
+    if (n > 0) {
+      used += (size_t)n;
+      continue;
+    }
+    if (n == 0)
+      break;
+    if (errno != EINTR) {
+      close(f);
+      return -1;
+    }
+  }
   close(f);
-  if (r <= 0)
+
+  if (used == 0 || used == sizeof(t) || memchr(t, '\0', used) != NULL ||
+      t[0] < '0' || t[0] > '9') {
+    LOG_WARN("Ignoring malformed payload PID marker");
     return -1;
-  t[r] = '\0';
-  return (pid_t)atoi(t);
+  }
+  t[used] = '\0';
+
+  errno = 0;
+  char *end = NULL;
+  const long parsed = strtol(t, &end, 10);
+  while (*end && isspace((unsigned char)*end))
+    ++end;
+  if (errno == ERANGE || end == t || *end != '\0') {
+    LOG_WARN("Ignoring malformed payload PID marker");
+    return -1;
+  }
+  if (parsed <= 1)
+    return (pid_t)parsed;
+
+  const pid_t pid = (pid_t)parsed;
+  if ((long)pid != parsed) {
+    LOG_WARN("Ignoring out-of-range payload PID marker");
+    return -1;
+  }
+  return pid;
 }
 
 void onion_payload_write_pid_file(const char *pid_path, pid_t pid) {
