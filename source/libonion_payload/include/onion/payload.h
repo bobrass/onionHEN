@@ -21,7 +21,9 @@ bool onion_payload_is_elf(const void *buf, size_t size);
 
 /**
  * Derive launch/PID key from basename: "foo.elf" → "foo".
- * Rejects empty stem (".elf") and path separators.
+ * Rejects empty stems, path separators, and stems that cannot fit without
+ * truncation. The identity is used for a PID marker, so truncating can alias
+ * distinct payloads.
  */
 bool onion_payload_elf_key_from_name(const char *name, char *out, size_t out_sz);
 

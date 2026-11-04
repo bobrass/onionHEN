@@ -63,19 +63,22 @@ inline bool is_legacy_payload_staging_name(const char *name) {
  * Matches util onion_payload_elf_key_from_name.
  */
 inline bool elf_key_from_name(const char *name, char *out, std::size_t out_sz) {
-  if (!name || !out || out_sz < 2)
+  if (!out || out_sz == 0)
+    return false;
+  out[0] = '\0';
+  if (!name || out_sz < 2)
     return false;
   const char *base = std::strrchr(name, '/');
   base = base ? base + 1 : name;
   if (!base[0] || std::strcmp(base, ".") == 0 || std::strcmp(base, "..") == 0)
     return false;
   std::size_t n = onion_elf_name_stem_n(base, std::strlen(base));
-  if (n == 0)
+  if (n == 0 || n >= out_sz || std::memchr(base, '/', n) ||
+      std::memchr(base, '\\', n))
     return false;
-  if (n >= out_sz)
-    n = out_sz - 1;
   std::memcpy(out, base, n);
   out[n] = '\0';
-  return out[0] != '\0';}
+  return out[0] != '\0';
+}
 
 } // namespace toolbox
