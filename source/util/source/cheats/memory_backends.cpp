@@ -41,7 +41,17 @@ int mapCodeCaveCommon(pid_t pid, uint64_t addr, size_t len) {
               PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (mapped != static_cast<intptr_t>(page_start)) {
     LOG_ERROR("[Cheat] code cave mmap failed page=0x%llx ret=0x%llx",
-                 (unsigned long long)page_start, (unsigned long long)mapped);
+              static_cast<unsigned long long>(page_start),
+              static_cast<unsigned long long>(mapped));
+    if (mapped >= 0) {
+      const int unmap_result = pt_munmap(pid, mapped, page_len);
+      if (unmap_result < 0) {
+        LOG_ERROR("[Cheat] code cave cleanup munmap failed page=0x%llx "
+                  "ret=0x%llx rc=%d",
+                  static_cast<unsigned long long>(page_start),
+                  static_cast<unsigned long long>(mapped), unmap_result);
+      }
+    }
     pt_detach_proc(pid, 0);
     return -1;
   }
@@ -49,7 +59,13 @@ int mapCodeCaveCommon(pid_t pid, uint64_t addr, size_t len) {
   if (kernel_mprotect(pid, page_start, page_len,
                       PROT_READ | PROT_WRITE | PROT_EXEC) < 0) {
     LOG_ERROR("[Cheat] code cave mprotect failed page=0x%llx",
-                 (unsigned long long)page_start);
+              static_cast<unsigned long long>(page_start));
+    const int unmap_result = pt_munmap(pid, static_cast<intptr_t>(page_start),
+                                      page_len);
+    if (unmap_result < 0) {
+      LOG_ERROR("[Cheat] code cave cleanup munmap failed page=0x%llx rc=%d",
+                static_cast<unsigned long long>(page_start), unmap_result);
+    }
     pt_detach_proc(pid, 0);
     return -1;
   }
