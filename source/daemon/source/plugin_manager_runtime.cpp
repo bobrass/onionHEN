@@ -114,9 +114,18 @@ PluginDirectoryWatcher &watcher() {
 void log_report(const char *operation, const plugin::ReconcileReport &report) {
   for (const plugin::DiscoveryIssue &issue : report.issues)
     LOG_WARN("[plugins] %s: %s", issue.path.c_str(), issue.message.c_str());
-  LOG_INFO("[plugins] %s: discovered=%zu running=%zu started=%zu failed=%zu",
-           operation, report.discovered, report.running, report.started,
-           report.failed);
+  const bool idle_reconcile = std::strcmp(operation, "reconcile") == 0 &&
+                              report.started == 0 && report.failed == 0 &&
+                              report.issues.empty();
+  if (idle_reconcile) {
+    LOG_DEBUG("[plugins] %s: discovered=%zu running=%zu started=%zu failed=%zu",
+              operation, report.discovered, report.running, report.started,
+              report.failed);
+  } else {
+    LOG_INFO("[plugins] %s: discovered=%zu running=%zu started=%zu failed=%zu",
+             operation, report.discovered, report.running, report.started,
+             report.failed);
+  }
 }
 
 } // namespace
