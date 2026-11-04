@@ -8,6 +8,48 @@
 
 #include "util_platform.h"
 
+static int hex_digit_value(unsigned char c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  if (c >= 'A' && c <= 'F') {
+    return c - 'A' + 10;
+  }
+  return -1;
+}
+
+int onion_cheat_parse_hex_u64(const char *text, uint64_t *out) {
+  if (text == NULL || out == NULL) {
+    return -1;
+  }
+
+  const char *begin = text;
+  const char *end = text + strlen(text);
+  while (begin < end && isspace((unsigned char)*begin)) ++begin;
+  while (begin < end && isspace((unsigned char)end[-1])) --end;
+  if (begin < end && end - begin >= 2 && begin[0] == '0' &&
+      (begin[1] == 'x' || begin[1] == 'X')) {
+    begin += 2;
+  }
+  if (begin == end) {
+    return -1;
+  }
+
+  uint64_t value = 0;
+  for (const char *cursor = begin; cursor < end; ++cursor) {
+    const int digit = hex_digit_value((unsigned char)*cursor);
+    if (digit < 0 || value > (UINT64_MAX - (uint64_t)digit) / 16) {
+      return -1;
+    }
+    value = value * 16 + (uint64_t)digit;
+  }
+  *out = value;
+  return 0;
+}
+
 /**
  * 将十六进制字符串解码为字节数组。
  * 支持奇数长度（首字节自动补 0）。

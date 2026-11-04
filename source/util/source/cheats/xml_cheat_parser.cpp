@@ -13,7 +13,7 @@ namespace onion::cheats {
 namespace {
 
 const char *findXmlTagValue(const char *start, const char *tag, char *out,
-                            size_t out_size) {
+                            size_t out_size, bool *truncated = nullptr) {
   char open_tag[64];
   char close_tag[64];
 
@@ -33,6 +33,9 @@ const char *findXmlTagValue(const char *start, const char *tag, char *out,
   }
 
   size_t len = static_cast<size_t>(close - open);
+  if (truncated != nullptr) {
+    *truncated = len >= out_size;
+  }
   if (len >= out_size) {
     len = out_size - 1;
   }
@@ -155,6 +158,8 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       char on[512];
       char off[512];
       char absolute[32];
+      bool offset_truncated = false;
+      uint64_t parsed_offset = 0;
       onion_patch_t *patch = nullptr;
 
       if (line_end == nullptr || line_end > cheat_end) {
@@ -168,7 +173,8 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       on[0] = '\0';
       off[0] = '\0';
       absolute[0] = '\0';
-      findXmlTagValue(line_cursor, "Offset", offset, sizeof(offset));
+      findXmlTagValue(line_cursor, "Offset", offset, sizeof(offset),
+                      &offset_truncated);
       findXmlTagValue(line_cursor, "Section", section, sizeof(section));
       findXmlTagValue(line_cursor, "ValueOn", on, sizeof(on));
       findXmlTagValue(line_cursor, "ValueOff", off, sizeof(off));
@@ -180,6 +186,14 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
         continue;
       }
 
+      if (offset_truncated ||
+          onion_cheat_parse_hex_u64(offset, &parsed_offset) < 0) {
+        LOG_WARN("[engine] parse_xml invalid patch offset cheat=%s",
+                 entry->name);
+        line_cursor = line_end + 12;
+        continue;
+      }
+
       if (onion_cheat_entry_ensure_patch(entry) != 0) {
         LOG_ERROR("[engine] parse_xml ensure_patch failed");
         line_cursor = line_end + 12;
@@ -187,7 +201,7 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       }
       patch = &entry->patches[entry->patch_count];
       std::memset(patch, 0, sizeof(*patch));
-      patch->offset = std::strtoull(offset, nullptr, 16);
+      patch->offset = parsed_offset;
       if (section[0] != '\0') {
         const int section_num = std::atoi(section);
         if (section_num < MODULE_INFO_MAX_SECTIONS) {
