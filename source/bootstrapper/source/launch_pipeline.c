@@ -240,7 +240,10 @@ int bootstrap_launch_services(uint32_t firmware_version, bool kstuff_autoload) {
   };
   LOG_DEBUG("payload loader port: %u", context.loader_port);
   LOG_DEBUG("launching embedded ELFs (serialized)");
-  sleep(3);
+  const unsigned int payload_settle_seconds = 5;
+  LOG_DEBUG("waiting %u seconds for previous payloads to settle",
+            payload_settle_seconds);
+  sleep(payload_settle_seconds);
 
   prepare_service_markers();
   if (!launch_util(&context))
