@@ -72,6 +72,15 @@ body:
       required: true
 
   - type: textarea
+    id: system_error
+    attributes:
+      label: System error and restart timing
+      description: For a kernel panic or ShellUI crash/restart, include the console error code and approximate times of the freeze, restart, and recovery. Include ShellUI PIDs if they appear in the logs.
+      placeholder: "CE-108262-9; freeze around 553s, recovery around 587s; old PID -> new PID if known"
+    validations:
+      required: false
+
+  - type: textarea
     id: expected
     attributes:
       label: Expected result
