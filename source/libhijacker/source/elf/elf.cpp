@@ -793,6 +793,11 @@ bool Elf::load() noexcept {
 
 
 bool Elf::launch() noexcept {
+	if (e_ident[EI_MAG0] != ELFMAG0 || e_ident[EI_MAG1] != ELFMAG1 ||
+		e_ident[EI_MAG2] != ELFMAG2 || e_ident[EI_MAG3] != ELFMAG3) {
+		LOG_ERROR("invalid ELF magic; refusing to launch");
+		return false;
+	}
 	LOG_DEBUG("processing program headers");
 	log_to_file( "processing program headers\n");
 
