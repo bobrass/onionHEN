@@ -8,6 +8,9 @@
 
 #include "util_platform.h"
 
+/* Match the per-file limit used when extracting synced cheat archives. */
+#define ONION_MAX_CHEAT_FILE_BYTES (8u * 1024u * 1024u)
+
 /**
  * 将十六进制字符串解码为字节数组。
  * 支持奇数长度（首字节自动补 0）。
@@ -51,7 +54,7 @@ int onion_cheat_hex_decode(const char *hex, uint8_t *out, size_t max_len,
 
 /**
  * 从文件系统加载文件内容到缓冲区。
- * 文件大小限制为 long 类型正数范围内。
+ * 文件大小限制为 8 MiB，避免解析过大的本地文件耗尽内存。
  *
  * @param path 文件路径。
  * @param size_out 输出参数，文件大小（字节）。
@@ -62,7 +65,8 @@ char *onion_cheat_load_file_buffer(const char *path, long *size_out) {
   size_t buf_size = 0;
 
   LOG_DEBUG("[engine] load_file_buffer path=%s", path ? path : "(null)");
-  if (util_file_read_alloc(path, &buf, &buf_size, (size_t)-1) < 0) {
+  if (util_file_read_alloc(path, &buf, &buf_size,
+                           ONION_MAX_CHEAT_FILE_BYTES) < 0) {
     LOG_ERROR("[engine] load_file_buffer failed path=%s", path);
     return NULL;
   }
