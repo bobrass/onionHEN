@@ -15,6 +15,7 @@ along with this program; see the file COPYING. If not, see
 <http://www.gnu.org/licenses/>.  */
 
 #include <onion/platform.h>
+#include <onion/log.h>
 /* C++ headers before common_utils.h: the latter pulls stdatomic.h, which
  * breaks libc++ <atomic> (pulled transitively via onion/settings.hpp) if
  * included first. */
@@ -64,6 +65,14 @@ void *ip_thread(void *arg) {
 
 void start_ip_thread(void) {
   pthread_t ip_thread_thr;
-  pthread_create(&ip_thread_thr, NULL, ip_thread, NULL);
-  pthread_detach(ip_thread_thr);
+  const int create_status =
+      pthread_create(&ip_thread_thr, NULL, ip_thread, NULL);
+  if (create_status != 0) {
+    LOG_ERROR("IP monitor thread creation failed rc=%d", create_status);
+    return;
+  }
+
+  const int detach_status = pthread_detach(ip_thread_thr);
+  if (detach_status != 0)
+    LOG_ERROR("IP monitor thread detach failed rc=%d", detach_status);
 }
