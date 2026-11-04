@@ -81,23 +81,54 @@ public:
 
   void persist(std::string_view plugin_id, pid_t pid) override {
     const std::string path = pid_path(plugin_id);
-    if (path.empty()) return;
-    if (pid <= 1) {
-      unlink(path.c_str());
+    const std::string id(plugin_id);
+    auto warn = [&id](const char *operation, int error) {
+      LOG_WARN("[plugins] PID marker %s failed for %s (errno=%d)", operation,
+               id.c_str(), error);
+    };
+    if (path.empty()) {
+      warn("path derivation", EINVAL);
       return;
     }
-    mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
-    mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
+    if (pid <= 1) {
+      if (unlink(path.c_str()) != 0 && errno != ENOENT) warn("removal", errno);
+      return;
+    }
+    if (mkdir(ONION_SYSTEM_TMP_ROOT, 0777) != 0 && errno != EEXIST) {
+      warn("directory creation", errno);
+      return;
+    }
+    if (mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777) != 0 && errno != EEXIST) {
+      warn("directory creation", errno);
+      return;
+    }
     std::string temp_path = path + ".tmp.XXXXXX";
     const int descriptor = ::mkstemp(temp_path.data());
-    if (descriptor < 0) return;
+    if (descriptor < 0) {
+      warn("temporary-file creation", errno);
+      return;
+    }
     mode_t mode = 0644;
     struct stat existing {};
-    if (stat(path.c_str(), &existing) == 0) mode = existing.st_mode & 0777;
-    bool ok = fchmod(descriptor, mode) == 0;
+    int failure = 0;
+    const char *failed_operation = "inspect existing marker";
+    if (stat(path.c_str(), &existing) == 0) {
+      mode = existing.st_mode & 0777;
+    } else if (errno != ENOENT) {
+      failure = errno;
+    }
+    bool ok = failure == 0 && fchmod(descriptor, mode) == 0;
+    if (failure == 0 && !ok) {
+      failure = errno;
+      failed_operation = "set permissions";
+    }
     char value[32]{};
     const int length = std::snprintf(value, sizeof(value), "%d\n", pid);
-    if (length <= 0 || static_cast<size_t>(length) >= sizeof(value)) ok = false;
+    if (length <= 0 || static_cast<size_t>(length) >= sizeof(value)) {
+      ok = false;
+      failure = EINVAL;
+      failed_operation = "format PID";
+    }
     size_t written = 0;
     while (ok && written < static_cast<size_t>(length)) {
       const ssize_t count = write(descriptor, value + written,
@@ -105,13 +136,24 @@ public:
       if (count < 0 && errno == EINTR) continue;
       if (count <= 0) {
         ok = false;
+        failure = count < 0 ? errno : EIO;
+        failed_operation = "write marker";
         break;
       }
       written += static_cast<size_t>(count);
     }
-    if (close(descriptor) != 0) ok = false;
-    if (ok && std::rename(temp_path.c_str(), path.c_str()) == 0) return;
+    if (close(descriptor) != 0 && ok) {
+      ok = false;
+      failure = errno;
+      failed_operation = "close temporary marker";
+    }
+    if (ok) {
+      if (std::rename(temp_path.c_str(), path.c_str()) == 0) return;
+      failure = errno;
+      failed_operation = "replace marker";
+    }
     unlink(temp_path.c_str());
+    warn(failed_operation, failure);
   }
 
   void stop(pid_t pid, uint32_t flags) override {
