@@ -59,6 +59,20 @@ uint32_t get_shellcode_size()
     return &stager_end - &stager;
 }
 
+static void unmap_remote_mapping(pid_t pid, uint64_t address, size_t length,
+                                 const char* name)
+{
+    if (!address || address == (uint64_t)-1)
+        return;
+
+    const int rc = pt_munmap(pid, (intptr_t)address, length);
+    if (rc != 0)
+    {
+        LOG_WARN("[-] failed to unmap %s pid=%d addr=%#lx rc=%d",
+                 name, pid, (unsigned long)address, rc);
+    }
+}
+
 
 //
 // Init all remote function pointers needed for injection
@@ -182,20 +196,20 @@ int inject_elf(struct proc* proc, void* elf)
         goto detach;
     }
 
-    //
-    // Make it executable
-    //
-    if (kernel_mprotect(proc->pid, bootstrap, shellcode_size, PROT_EXEC|PROT_WRITE|PROT_READ) != 0)
-    {
-        LOG_ERROR("[-] bootstrap mprotect failed pid=%d addr=%#lx",
-                    proc->pid, (unsigned long)bootstrap);
-        status = false;
-        goto detach;
-    }
     if (pt_copyin(proc->pid, stager, bootstrap, shellcode_size) != 0)
     {
         LOG_ERROR("[-] bootstrap copyin failed pid=%d addr=%#lx",
                     proc->pid, (unsigned long)bootstrap);
+        unmap_remote_mapping(proc->pid, bootstrap, shellcode_size, "bootstrap");
+        status = false;
+        goto detach;
+    }
+    if (kernel_mprotect(proc->pid, bootstrap, shellcode_size,
+                        PROT_READ | PROT_EXEC) != 0)
+    {
+        LOG_ERROR("[-] bootstrap mprotect(RX) failed pid=%d addr=%#lx",
+                  proc->pid, (unsigned long)bootstrap);
+        unmap_remote_mapping(proc->pid, bootstrap, shellcode_size, "bootstrap");
         status = false;
         goto detach;
     }
@@ -208,12 +222,16 @@ int inject_elf(struct proc* proc, void* elf)
     if (!sce_ptr_mem || sce_ptr_mem == (uint64_t)-1)
     {
         LOG_ERROR("[-] sce_functions mmap failed pid=%d", proc->pid);
+        unmap_remote_mapping(proc->pid, bootstrap, shellcode_size, "bootstrap");
         status = false;
         goto detach;
     }
     if (pt_copyin(proc->pid, &sce_functions, sce_ptr_mem, sizeof(SCEFunctions)) != 0)
     {
         LOG_ERROR("[-] sce_functions copyin failed pid=%d", proc->pid);
+        unmap_remote_mapping(proc->pid, sce_ptr_mem, sizeof(sce_functions),
+                             "sce_functions");
+        unmap_remote_mapping(proc->pid, bootstrap, shellcode_size, "bootstrap");
         status = false;
         goto detach;
     }
@@ -229,6 +247,9 @@ int inject_elf(struct proc* proc, void* elf)
         status = false;
         goto detach;
     }
+    unmap_remote_mapping(proc->pid, sce_ptr_mem, sizeof(sce_functions),
+                         "sce_functions");
+    unmap_remote_mapping(proc->pid, bootstrap, shellcode_size, "bootstrap");
     if (thread_status != 0)
     {
         LOG_ERROR("[-] remote pthread_create failed pid=%d rc=%ld",
