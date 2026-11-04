@@ -239,7 +239,7 @@ void *toolbox_rest_worker(void *arg) {
   for (int attempt = 0; attempt < kRestRetryMax; ++attempt) {
     if (g_rest_gen.load(std::memory_order_acquire) != job.gen) {
       LOG_DEBUG("rest: inject retry superseded gen=%u", job.gen);
-      break;
+      return nullptr;
     }
     pid_t target = job.exec_pid;
     if (target <= 1) {
@@ -262,6 +262,11 @@ void *toolbox_rest_worker(void *arg) {
                 kRestRetryMax - 1, static_cast<int>(target));
       usleep(kRestRetryDelayUs[attempt]);
     }
+  }
+  if (g_rest_gen.load(std::memory_order_acquire) != job.gen) {
+    LOG_DEBUG("rest: inject retry superseded after final attempt gen=%u",
+              job.gen);
+    return nullptr;
   }
   LOG_WARN("rest: toolbox recovery exhausted gen=%u requested_pid=%d", job.gen,
            static_cast<int>(job.exec_pid));
