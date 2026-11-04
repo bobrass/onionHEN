@@ -2,6 +2,8 @@
 #include "onpress.hpp"
 #include "toolbox_i18n.hpp"
 #include <onion/notify_i18n.h>
+#include <cerrno>
+#include <climits>
 #include <cstdlib>
 
 static OnPressResult id_start_opt(OnPressContext &ctx) {
@@ -24,6 +26,21 @@ static OnPressResult id_start_opt(OnPressContext &ctx) {
   LOG_INFO("Startup destination: %s",
            destination == onion::kStartupOpenHomeMenu ? "home_menu" : "none");
   return OnPressResult::Handled;
+}
+
+static bool parse_int_value(const std::string &text, int *value) {
+  if (!value) {
+    return false;
+  }
+  errno = 0;
+  char *end = nullptr;
+  const long parsed = std::strtol(text.c_str(), &end, 10);
+  if (errno == ERANGE || end == text.c_str() || *end != '\0' ||
+      parsed < INT_MIN || parsed > INT_MAX) {
+    return false;
+  }
+  *value = static_cast<int>(parsed);
+  return true;
 }
 
 static OnPressResult id_log_level(OnPressContext &ctx) {
@@ -126,27 +143,56 @@ static OnPressResult id_rest_1(OnPressContext &ctx) {
 }
 
 static OnPressResult id_enable_fan_speed(OnPressContext &ctx) {
-  if (atol(ctx.value.c_str()) == g_settings.enable_fan_speed) {
+  int requested = 0;
+  if (!parse_int_value(ctx.value, &requested) ||
+      (requested != 0 && requested != 1)) {
+    LOG_WARN("Rejected fan control state: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
+  const bool enabled = requested != 0;
+  if (enabled == g_settings.enable_fan_speed) {
     LOG_WARN("Fan speed control already %s",
                 g_settings.enable_fan_speed ? "Enabled" : "Disabled");
     return OnPressResult::EarlyReturn;
   }
-  g_settings.enable_fan_speed = !g_settings.enable_fan_speed;
-  IPC_Client::getInstance(false).Set_Fan_Threshold(g_settings.fan_threshold,
-                                                   g_settings.enable_fan_speed);
+  if (!IPC_Client::getInstance(false).Set_Fan_Threshold(g_settings.fan_threshold,
+                                                        enabled)) {
+    LOG_WARN("Fan speed control change failed; keeping current state");
+    return OnPressResult::EarlyReturn;
+  }
+  g_settings.enable_fan_speed = enabled;
   return OnPressResult::Handled;
 }
 
 static OnPressResult id_fan_speed(OnPressContext &ctx) {
-  int &fan_speed = g_settings.fan_threshold;
-  fan_speed = atoi(ctx.value.c_str());
-  if (!g_settings.enable_fan_speed) {
-    notify("notify.fan.not_enabled");
+  int requested = 0;
+  if (!parse_int_value(ctx.value, &requested)) {
+    LOG_WARN("Rejected fan threshold: %s", ctx.value.c_str());
+    notify("notify.fan.adjust_failed");
     return OnPressResult::EarlyReturn;
   }
+  if (requested < onion::kFanThresholdMinCelsius ||
+      requested > onion::kFanThresholdMaxCelsius) {
+    LOG_WARN("Rejected fan threshold: %d", requested);
+    notify("notify.fan.invalid_speed", requested);
+    return OnPressResult::EarlyReturn;
+  }
+  int &fan_speed = g_settings.fan_threshold;
+  if (requested == fan_speed) {
+    return OnPressResult::EarlyReturn;
+  }
+  if (!g_settings.enable_fan_speed) {
+    fan_speed = requested;
+    notify("notify.fan.not_enabled");
+    return OnPressResult::Handled;
+  }
+  if (!IPC_Client::getInstance(false).Set_Fan_Threshold(requested, true)) {
+    LOG_WARN("Fan threshold update failed; keeping current value");
+    notify("notify.fan.adjust_failed");
+    return OnPressResult::EarlyReturn;
+  }
+  fan_speed = requested;
   LOG_DEBUG("Setting fan speed to %d%%", fan_speed);
-  IPC_Client::getInstance(false).Set_Fan_Threshold(fan_speed,
-                                                   g_settings.enable_fan_speed);
   return OnPressResult::Handled;
 }
 

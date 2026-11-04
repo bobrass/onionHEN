@@ -397,13 +397,6 @@ void handleIPC(clientArgs *client, std::string &inputStr,
     int speed = onion_cjson::int_item(my_json.get(), "speed");
     int enabled = onion_cjson::int_item(my_json.get(), "enabled");
     LOG_DEBUG("Adjusting Fan Speed to: %d", speed);
-    if (speed < onion::kFanThresholdMinCelsius ||
-        speed > onion::kFanThresholdMaxCelsius) {
-      onion_notify(true, "notify.fan.invalid_speed", speed);
-      reply(sender_app, true);
-      break;
-    }
-
     if (!enabled) {
       onion_notify(true, "notify.fan.disabled");
       restore_automatic_fan();
@@ -416,6 +409,13 @@ void handleIPC(clientArgs *client, std::string &inputStr,
         LOG_ERROR("Fan disable: failed to persist settings");
       }
       reply(sender_app, false);
+      break;
+    }
+
+    if (speed < onion::kFanThresholdMinCelsius ||
+        speed > onion::kFanThresholdMaxCelsius) {
+      onion_notify(true, "notify.fan.invalid_speed", speed);
+      reply(sender_app, true);
       break;
     }
 
