@@ -137,6 +137,12 @@ int inject_elf(struct proc* proc, void* elf)
     attached = true;
 
     init_remote_function_pointers(proc->pid);
+    if (!remote_pthread_create)
+    {
+        LOG_ERROR("[-] pthread_create symbol not found in PID %d", proc->pid);
+        status = false;
+        goto detach;
+    }
 
     LOG_DEBUG("[+] Loading ELF on %d...[+]", proc->pid);
     /* Crash window: remote mmap/mprotect via pt_syscall while ShellUI is stopped. */
@@ -216,9 +222,11 @@ int inject_elf(struct proc* proc, void* elf)
     //
     // Call until hit a breakpoint (stager ends with int3; pt_call2 waits)
     //
-    if (pt_call2(proc->pid, bootstrap, sce_ptr_mem) == -1)
+    const long thread_status = pt_call2(proc->pid, bootstrap, sce_ptr_mem);
+    if (thread_status != 0)
     {
-        LOG_ERROR("[-] pt_call2 failed pid=%d errno=%d", proc->pid, errno);
+        LOG_ERROR("[-] remote pthread_create failed pid=%d rc=%ld errno=%d",
+                  proc->pid, thread_status, errno);
         status = false;
         goto detach;
     }
