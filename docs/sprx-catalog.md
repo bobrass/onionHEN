@@ -25,6 +25,9 @@ auto_start=true
 
 Each plugin has one `[plugin.<id>]` section. The ID is unique and uses the
 same printable identifier rule as the existing plugin UI and plugin manager.
+If `catalog.ini` is absent, the catalog is treated as empty (no SPRX/PRX
+plugins are installed). Other open/read errors and malformed entries
+remain errors.
 `path` is an absolute `.sprx` or `.prx` path; the loader performs the final
 `realpath()` and regular-file checks before touching the target process.
 
