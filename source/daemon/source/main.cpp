@@ -149,7 +149,7 @@ void install_crash_handlers() {
     sigaction(i, &action, nullptr);
 }
 
-void start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
+bool start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
   if (app_jailbreak_runtime_start(app_jailbreak_thr)) {
     pthread_t lifecycle_thr = nullptr;
     if (pthread_create(&lifecycle_thr, nullptr, app_lifecycle_listener_thread,
@@ -163,7 +163,11 @@ void start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
     LOG_ERROR("[lifecycle] Big App listener disabled: AppJailbreak runtime is "
               "not ready");
   }
-  pthread_create(msg_thr, nullptr, IPC_loop, nullptr);
+  const int msg_create_status =
+      pthread_create(msg_thr, nullptr, IPC_loop, nullptr);
+  if (msg_create_status != 0)
+    LOG_ERROR("[IPC] message thread creation failed rc=%d; supervisor will retry",
+              msg_create_status);
   if (!onion::daemon::plugin_ipc::start())
     LOG_ERROR("plugin IPC server failed to start");
   pthread_t ctrl_thr = nullptr;
@@ -187,13 +191,32 @@ void start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
   pthread_t resume_thr = nullptr;
   pthread_create(&resume_thr, nullptr, resume_recovery_thread, nullptr);
   pthread_detach(resume_thr);
+  return msg_create_status == 0;
 }
 
 /** Keep IPC_loop alive: rejoin + restart on exit. */
-[[noreturn]] void ipc_supervisor_loop(pthread_t* msg_thr) {
+[[noreturn]] void ipc_supervisor_loop(pthread_t* msg_thr, bool started) {
   while (true) {
-    pthread_join(*msg_thr, nullptr);
-    pthread_create(msg_thr, nullptr, IPC_loop, nullptr);
+    if (started) {
+      const int join_status = pthread_join(*msg_thr, nullptr);
+      if (join_status != 0) {
+        LOG_ERROR("[IPC] message thread join failed rc=%d; retrying",
+                  join_status);
+        sleep(1);
+        continue;
+      }
+    }
+
+    started = false;
+    const int create_status =
+        pthread_create(msg_thr, nullptr, IPC_loop, nullptr);
+    if (create_status == 0) {
+      started = true;
+      continue;
+    }
+
+    LOG_ERROR("[IPC] message thread restart failed rc=%d; retrying",
+              create_status);
     sleep(1);
   }
 }
@@ -310,7 +333,8 @@ int main() {
   // Big App lifecycle events then use reconcile() against this initialized
   // catalog, rather than racing a second initial start().
   onion::daemon::sprx_plugins::start();
-  start_worker_threads(&app_jailbreak_thr, &msg_thr);
+  const bool msg_thread_started =
+      start_worker_threads(&app_jailbreak_thr, &msg_thr);
   for (int attempt = 0;
        attempt < 20 && !onion::daemon::plugin_ipc::is_listening(); ++attempt)
     usleep(50 * 1000);
@@ -336,7 +360,7 @@ int main() {
 
   onion::daemon::apply_startup_destination(boot_settings);
 
-  ipc_supervisor_loop(&msg_thr);
+  ipc_supervisor_loop(&msg_thr, msg_thread_started);
   // unreachable
   return 0;
 }
