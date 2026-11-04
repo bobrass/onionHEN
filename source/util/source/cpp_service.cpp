@@ -62,8 +62,17 @@ void *ip_thread(void *arg) {
   }
 }
 
-void start_ip_thread(void) {
-  pthread_t ip_thread_thr;
-  pthread_create(&ip_thread_thr, NULL, ip_thread, NULL);
-  pthread_detach(ip_thread_thr);
+bool start_ip_thread(void) {
+  pthread_t ip_thread_thr{};
+  const int create_rc = pthread_create(&ip_thread_thr, NULL, ip_thread, NULL);
+  if (create_rc != 0) {
+    LOG_WARN("IP monitor thread creation failed: rc=%d", create_rc);
+    return false;
+  }
+
+  const int detach_rc = pthread_detach(ip_thread_thr);
+  if (detach_rc != 0) {
+    LOG_WARN("IP monitor thread detach failed: rc=%d", detach_rc);
+  }
+  return true;
 }

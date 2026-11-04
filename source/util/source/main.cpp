@@ -56,7 +56,7 @@ extern "C" {
 extern bool is_handler_enabled;
 
 onion::SettingsStore g_settings;
-void start_ip_thread(void);
+bool start_ip_thread(void);
 void* IPC_loop(void* args);
 bool shellui_patch(void);
 
@@ -134,9 +134,13 @@ int main(void) {
 
     LoadSettings();
 
-    start_ip_thread();
-    pthread_create(&ipc_server, NULL, IPC_loop, NULL);
-    /* IPC thread is up — publish ready for bootstrapper/daemon consumers */
+    (void)start_ip_thread();
+    const int ipc_create_rc = pthread_create(&ipc_server, NULL, IPC_loop, NULL);
+    if (ipc_create_rc != 0) {
+        LOG_ERROR("IPC server thread creation failed: rc=%d", ipc_create_rc);
+        return 1;
+    }
+    /* Only publish ready after the required IPC server thread was created. */
     onion_ready_signal_pid(ONION_READY_UTIL, getpid());
 
     if (onion_ready_is_set(ONION_FLAG_UTIL_BOOTED)) {
