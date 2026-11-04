@@ -338,8 +338,13 @@ bool SprxCatalog::load_file(std::string_view path,
   const std::string file_path(path);
   FILE *file = std::fopen(file_path.c_str(), "rb");
   if (!file) {
-    add_issue(issues, 0, {}, std::string("cannot open manifest: ") + std::strerror(errno));
+    const int open_error = errno;
     entries_.clear();
+    if (open_error == ENOENT)
+      return true;
+    add_issue(issues, 0, {},
+              std::string("cannot open manifest: ") +
+                  std::strerror(open_error));
     return false;
   }
   if (std::fseek(file, 0, SEEK_END) != 0) {
