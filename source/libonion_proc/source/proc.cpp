@@ -117,6 +117,11 @@ void list_proc_modules(struct proc* proc)
 
 module_info_t* get_module_info(pid_t pid, const char* module_name)
 {
+    if (module_name == NULL)
+    {
+        return NULL;
+    }
+
     size_t num_handles = 0;
     syscall(SYS_dl_get_list, pid, NULL, 0, &num_handles);
     if (num_handles == 0)
