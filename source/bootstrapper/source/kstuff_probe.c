@@ -2,13 +2,18 @@
 
 #include "kstuff_probe.h"
 
+#include <onion/log.h>
+
 #include <stddef.h>
-#include <string.h>
 
 int sceKernelMprotect(void *addr, size_t len, int prot);
 
 bool kstuff_mprotect_available(void) {
   char probe[100];
-  memset(probe, 0, sizeof(probe));
-  return sceKernelMprotect(probe, sizeof(probe), 0x7) == 0;
+  if (sceKernelMprotect(probe, sizeof(probe), 0x7) != 0)
+    return false;
+
+  if (sceKernelMprotect(probe, sizeof(probe), 0x3) != 0)
+    LOG_ERROR("kstuff mprotect probe could not restore stack permissions");
+  return true;
 }

@@ -101,6 +101,7 @@ namespace {
 constexpr int kSyscallInstrOffset = 0x0A;
 constexpr size_t kMprotectProbeSize = 100;
 constexpr int kProtRwx = 0x7; // PROT_READ | PROT_WRITE | PROT_EXEC
+constexpr int kProtRw = 0x3; // PROT_READ | PROT_WRITE
 constexpr uint32_t kFw3xxMaxExclusive = 0x4000042;
 constexpr uint32_t kFw6xxMin = 0x6000000;
 // Same magnitude as the previous sleep(0x100000) keep-alive.
@@ -538,6 +539,10 @@ bool install_optional_diag(const char* tag, MonoImage* image, const char* ns,
 bool install_hooks(const ShellImages& img) {
   char probe[kMprotectProbeSize];
   has_hv_bypass = (sceKernelMprotect(probe, sizeof(probe), kProtRwx) == 0);
+  if (has_hv_bypass &&
+      sceKernelMprotect(probe, sizeof(probe), kProtRw) != 0) {
+    LOG_ERROR("mprotect probe could not restore stack permissions");
+  }
   LOG_DEBUG("has_hv_bypass=%d (mprotect for detours)", has_hv_bypass ? 1 : 0);
 
   Patch_Main_thread_Check(img.core);

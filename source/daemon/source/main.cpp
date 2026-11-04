@@ -109,7 +109,6 @@ extern "C" {
     int sceKernelDlsym(uint32_t lib, const char *name, void **fun);
     int scePadClose(int handle);
     int sceSystemStateMgrEnterStandby(void);
-    int sceKernelMprotect(void *addr, size_t len, int prot);
     ssize_t _read(int, void *, size_t);
     int sceKernelGetProcessName(int pid, char *name);
     int sceKernelGetAppInfo(int pid, app_info_t *info);
@@ -286,7 +285,6 @@ int main() {
   kernel_base = args->kdata_base_addr;
 
   LOG_INFO("=========== starting OnionHEN (0x%X) ... ===========", fw_ver);
-  (void)sceKernelMprotect(&buz[0], 100, 0x7); // probe mprotect / kstuff state
   const bool toolbox_only = (fw_ver >= 0x10000);
   is_800 = (fw_ver >= 0x800);
 

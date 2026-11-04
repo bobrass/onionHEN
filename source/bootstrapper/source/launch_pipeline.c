@@ -29,7 +29,6 @@ extern uint8_t kstuff_start[];
 extern const unsigned int kstuff_size;
 
 int sceKernelGetProcessName(int pid, char *name);
-int sceKernelMprotect(void *addr, size_t len, int prot);
 
 typedef struct LaunchContext {
   uint16_t loader_port;
@@ -151,7 +150,6 @@ static bool launch_util(LaunchContext *context) {
 
 static void launch_kstuff(LaunchContext *context, uint32_t firmware_version,
                           bool autoload) {
-  char probe[100] = {0};
   const bool disabled_by_usb = if_exists("/mnt/usb0/no_kstuff");
   if (firmware_version < 0x3000000) {
     if (disabled_by_usb || !autoload) {
@@ -203,7 +201,7 @@ static void launch_kstuff(LaunchContext *context, uint32_t firmware_version,
   }
 
   for (int waited = 0; waited <= 15; ++waited) {
-    if (sceKernelMprotect(probe, sizeof(probe), 0x7) == 0) {
+    if (kstuff_mprotect_available()) {
       LOG_DEBUG("kstuff mprotect OK -- signal ready");
       onion_ready_signal(ONION_READY_KSTUFF);
       sleep(1);
