@@ -64,6 +64,14 @@ void *ip_thread(void *arg) {
 
 void start_ip_thread(void) {
   pthread_t ip_thread_thr;
-  pthread_create(&ip_thread_thr, NULL, ip_thread, NULL);
-  pthread_detach(ip_thread_thr);
+  int result = pthread_create(&ip_thread_thr, NULL, ip_thread, NULL);
+  if (result != 0) {
+    LOG_ERROR("IP monitor: pthread_create failed (%d)", result);
+    return;
+  }
+
+  result = pthread_detach(ip_thread_thr);
+  if (result != 0) {
+    LOG_ERROR("IP monitor: pthread_detach failed (%d)", result);
+  }
 }
