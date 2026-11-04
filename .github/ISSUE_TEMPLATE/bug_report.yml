@@ -25,6 +25,15 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: console_model
+    attributes:
+      label: PS5 model (if known)
+      description: Include the model family or CFI number if available.
+      placeholder: "Original / Slim / Pro (e.g. CFI-20xx)"
+    validations:
+      required: false
+
   - type: dropdown
     id: loader
     attributes:
