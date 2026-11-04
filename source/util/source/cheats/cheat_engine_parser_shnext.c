@@ -1,6 +1,7 @@
 #include <onion/log.h>
 #include "cheats/cheat_engine_internal.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -304,7 +305,20 @@ static int shnext_parse_variable(const cJSON *var_obj, onion_patch_t *patch) {
   if (field == NULL || !cJSON_IsNumber(field)) {
     return -1;
   }
-  patch->offset = (uint64_t)field->valuedouble;
+  const double offset = field->valuedouble;
+  /* cJSON stores JSON numbers as doubles, so larger integers may already have
+   * lost precision before this conversion. Keep only exact, nonnegative safe
+   * integers to avoid undefined or silently rounded address values. */
+  if (!isfinite(offset) || offset < 0.0 || offset > 9007199254740991.0) {
+    LOG_WARN("[engine] shnext rejected invalid numeric offset");
+    return -1;
+  }
+  const uint64_t parsed_offset = (uint64_t)offset;
+  if ((double)parsed_offset != offset) {
+    LOG_WARN("[engine] shnext rejected non-integer offset");
+    return -1;
+  }
+  patch->offset = parsed_offset;
 
   field = cJSON_GetObjectItem(var_obj, "label");
   label = cJSON_IsString(field) ? field->valuestring : NULL;
