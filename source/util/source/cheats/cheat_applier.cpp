@@ -987,9 +987,20 @@ int CheatApplier::toggle(const game_context_t &game, onion_cheat_file_t &file,
 
   if (touched_count != transaction.size() || !status.empty()) {
     for (size_t i = touched_count; i > 0; --i) {
-      const Snapshot &snapshot = snapshots[i - 1];
-      (void)backend->write(pid, snapshot.address, snapshot.bytes.data(),
-                           snapshot.bytes.size());
+      const size_t item_index = i - 1;
+      const Snapshot &snapshot = snapshots[item_index];
+      const ResolvedSegment &segment = *transaction[item_index].segment;
+      const int rollback_result = backend->write(
+          pid, snapshot.address, snapshot.bytes.data(), snapshot.bytes.size());
+      if (rollback_result < 0) {
+        LOG_ERROR(
+            "[Cheat] Rollback write failed for '%s' patch=%zu/%zu segment=%zu "
+            "addr=0x%llx len=%zu rc=%d",
+            entry.name, segment.patch_index + 1, entry.patch_count,
+            segment.segment_index + 1,
+            static_cast<unsigned long long>(snapshot.address),
+            snapshot.bytes.size(), rollback_result);
+      }
     }
     if (status.empty()) {
       status = status_tr("notify.cheats.activation_failed", entry.name);
