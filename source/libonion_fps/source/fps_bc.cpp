@@ -389,6 +389,10 @@ BcHookStatus BcGnmHook::install(pid_t pid) {
   if (onion_proc_copyin(pid, fn, patch, sizeof(patch)) != 0) {
     LOG_WARN("fps-bc: entry patch failed @0x%llx",
              static_cast<unsigned long long>(fn));
+    if (onion_proc_copyin(pid, fn, code, sizeof(patch)) != 0) {
+      LOG_ERROR("fps-bc: entry patch rollback failed @0x%llx",
+                static_cast<unsigned long long>(fn));
+    }
     (void)restore_rx_pages();
     reset();
     return BcHookStatus::WriteFailed;
