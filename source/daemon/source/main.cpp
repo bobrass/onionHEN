@@ -149,12 +149,28 @@ void install_crash_handlers() {
     sigaction(i, &action, nullptr);
 }
 
+void start_detached_worker(const char *name, pthread_t *thread,
+                           void *(*entry)(void *), void *arg) {
+  const int create_status = pthread_create(thread, nullptr, entry, arg);
+  if (create_status != 0) {
+    LOG_ERROR("[thread] %s creation failed rc=%d", name, create_status);
+    return;
+  }
+
+  const int detach_status = pthread_detach(*thread);
+  if (detach_status != 0)
+    LOG_ERROR("[thread] %s detach failed rc=%d", name, detach_status);
+}
+
 bool start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
   if (app_jailbreak_runtime_start(app_jailbreak_thr)) {
     pthread_t lifecycle_thr = nullptr;
     if (pthread_create(&lifecycle_thr, nullptr, app_lifecycle_listener_thread,
                        nullptr) == 0) {
-      pthread_detach(lifecycle_thr);
+      const int detach_status = pthread_detach(lifecycle_thr);
+      if (detach_status != 0)
+        LOG_ERROR("[lifecycle] SceSysCore listener thread detach failed rc=%d",
+                  detach_status);
     } else {
       LOG_ERROR("[lifecycle] SceSysCore listener thread creation failed");
       onion::daemon::app_lifecycle::stop();
@@ -166,31 +182,30 @@ bool start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
   const int msg_create_status =
       pthread_create(msg_thr, nullptr, IPC_loop, nullptr);
   if (msg_create_status != 0)
-    LOG_ERROR("[IPC] message thread creation failed rc=%d; supervisor will retry",
-              msg_create_status);
+    LOG_ERROR(
+        "[IPC] message thread creation failed rc=%d; supervisor will retry",
+        msg_create_status);
   if (!onion::daemon::plugin_ipc::start())
     LOG_ERROR("plugin IPC server failed to start");
   pthread_t ctrl_thr = nullptr;
-  pthread_create(&ctrl_thr, nullptr, control_tcp_loop, nullptr);
-  pthread_detach(ctrl_thr);
+  start_detached_worker("control TCP", &ctrl_thr, control_tcp_loop, nullptr);
   pthread_t supervisor_thr = nullptr;
-  pthread_create(&supervisor_thr, nullptr, runtime_supervisor_thread, nullptr);
-  pthread_detach(supervisor_thr);
+  start_detached_worker("runtime supervisor", &supervisor_thr,
+                        runtime_supervisor_thread, nullptr);
   pthread_t fan_thr = nullptr;
-  pthread_create(&fan_thr, nullptr, fan_maintenance_thread, nullptr);
-  pthread_detach(fan_thr);
+  start_detached_worker("fan maintenance", &fan_thr, fan_maintenance_thread,
+                        nullptr);
   pthread_t fps_thr = nullptr;
-  pthread_create(&fps_thr, nullptr, fps_sampler_thread, nullptr);
-  pthread_detach(fps_thr);
+  start_detached_worker("FPS sampler", &fps_thr, fps_sampler_thread, nullptr);
   pthread_t vsync_fps_thr = nullptr;
-  pthread_create(&vsync_fps_thr, nullptr, vsync_fps_sampler_thread, nullptr);
-  pthread_detach(vsync_fps_thr);
+  start_detached_worker("vsync FPS sampler", &vsync_fps_thr,
+                        vsync_fps_sampler_thread, nullptr);
   pthread_t language_thr = nullptr;
-  pthread_create(&language_thr, nullptr, system_language_poll_thread, nullptr);
-  pthread_detach(language_thr);
+  start_detached_worker("system language poll", &language_thr,
+                        system_language_poll_thread, nullptr);
   pthread_t resume_thr = nullptr;
-  pthread_create(&resume_thr, nullptr, resume_recovery_thread, nullptr);
-  pthread_detach(resume_thr);
+  start_detached_worker("resume recovery", &resume_thr,
+                        resume_recovery_thread, nullptr);
   return msg_create_status == 0;
 }
 
