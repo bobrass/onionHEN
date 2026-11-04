@@ -56,6 +56,15 @@ body:
         - Bundled kstuff disabled; no external kstuff
         - Not sure or not applicable
 
+  - type: input
+    id: external_kstuff_build
+    attributes:
+      label: External kstuff release or build (if applicable)
+      description: If external kstuff was running, include its source and release, version, or build hash.
+      placeholder: "e.g. v1.10 fpkg build or commit hash"
+    validations:
+      required: false
+
   - type: dropdown
     id: area
     attributes:
