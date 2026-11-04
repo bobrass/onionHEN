@@ -352,11 +352,17 @@ pt_call2(pid_t pid, intptr_t addr, ...)
     return -1;
   }
 
+  /* Read the breakpoint-time RAX before restoring the interrupted context. */
+  if (pt_getregs(pid, &jmp_reg) != 0) {
+    return -1;
+  }
+  const long result = jmp_reg.r_rax;
+
   if (pt_setregs(pid, &bak_reg) != 0) {
     return -1;
   }
 
-  return jmp_reg.r_rax;
+  return result;
 }
 
 

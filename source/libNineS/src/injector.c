@@ -36,11 +36,14 @@ static int write_self_authid(uint64_t authid)
 int __attribute__((section(".stager_shellcode$1")))  stager(SCEFunctions* functions)
 {
     pthread_t thread;
-    functions->pthread_create_ptr(&thread, 0, (void *(*)(void *)) functions->elf_main, functions->payload_args);
+    int thread_status = functions->pthread_create_ptr(
+        &thread, 0, (void *(*)(void *)) functions->elf_main,
+        functions->payload_args);
 
-    asm("int3");
+    /* Keep pthread_create's status in RAX for the injector's breakpoint read. */
+    asm volatile("int3" : "+a"(thread_status) : : "memory");
 
-    return 0;
+    return thread_status;
 }
 
 //
