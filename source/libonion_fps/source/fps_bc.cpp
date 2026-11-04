@@ -339,6 +339,19 @@ BcHookStatus BcGnmHook::install(pid_t pid) {
   constexpr int kRx = PROT_READ | PROT_EXEC;
   const intptr_t tramp_page = static_cast<intptr_t>(tramp_code) & ~0xFFFL;
   const intptr_t fn_page = static_cast<intptr_t>(fn) & ~0xFFFL;
+  auto restore_rx_pages = [&]() {
+    if (kernel_mprotect(pid, tramp_page, 0x1000, kRx) != 0) {
+      LOG_WARN("fps-bc: mprotect(RX) restore failed for trampoline "
+               "@0x%llx errno=%d",
+               static_cast<unsigned long long>(tramp_page), errno);
+    }
+    if (fn_page != tramp_page &&
+        kernel_mprotect(pid, fn_page, 0x1000, kRx) != 0) {
+      LOG_WARN("fps-bc: mprotect(RX) restore failed for target "
+               "@0x%llx errno=%d",
+               static_cast<unsigned long long>(fn_page), errno);
+    }
+  };
 
   if (kernel_mprotect(pid, tramp_page, 0x1000, kRwx) != 0) {
     LOG_WARN("fps-bc: mprotect(RWX) failed @0x%llx errno=%d",
@@ -349,6 +362,7 @@ BcHookStatus BcGnmHook::install(pid_t pid) {
   if (kernel_mprotect(pid, fn_page, 0x1000, kRwx) != 0) {
     LOG_WARN("fps-bc: mprotect(RWX) failed @0x%llx errno=%d",
              static_cast<unsigned long long>(fn_page), errno);
+    (void)restore_rx_pages();
     reset();
     return BcHookStatus::MprotectFailed;
   }
@@ -357,6 +371,7 @@ BcHookStatus BcGnmHook::install(pid_t pid) {
   if (onion_proc_copyin(pid, counter_va, &zero64, sizeof(zero64)) != 0) {
     LOG_WARN("fps-bc: counter zero write failed @0x%llx",
              static_cast<unsigned long long>(counter_va));
+    (void)restore_rx_pages();
     reset();
     return BcHookStatus::WriteFailed;
   }
@@ -364,6 +379,7 @@ BcHookStatus BcGnmHook::install(pid_t pid) {
   if (onion_proc_copyin(pid, tramp_code, block, block_bytes) != 0) {
     LOG_WARN("fps-bc: trampoline write failed @0x%llx",
              static_cast<unsigned long long>(tramp_code));
+    (void)restore_rx_pages();
     reset();
     return BcHookStatus::WriteFailed;
   }
@@ -373,13 +389,12 @@ BcHookStatus BcGnmHook::install(pid_t pid) {
   if (onion_proc_copyin(pid, fn, patch, sizeof(patch)) != 0) {
     LOG_WARN("fps-bc: entry patch failed @0x%llx",
              static_cast<unsigned long long>(fn));
+    (void)restore_rx_pages();
     reset();
     return BcHookStatus::WriteFailed;
   }
 
-  if (kernel_mprotect(pid, fn_page, 0x1000, kRx) != 0)
-    LOG_WARN("fps-bc: mprotect(RX) restore failed @0x%llx errno=%d",
-             static_cast<unsigned long long>(fn_page), errno);
+  (void)restore_rx_pages();
 
   pid_ = pid;
   target_va_ = fn;
