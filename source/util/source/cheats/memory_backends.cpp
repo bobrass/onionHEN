@@ -4,6 +4,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <limits>
 #include <sys/mman.h>
 
 #include <ps5/kernel.h>
@@ -26,8 +27,21 @@ inline uint64_t pageAlignUp(uint64_t v) {
 }
 
 int mapCodeCaveCommon(pid_t pid, uint64_t addr, size_t len) {
+  const uint64_t max_address = std::numeric_limits<uint64_t>::max();
+  if (len == 0 || len > max_address - addr) {
+    LOG_ERROR("[Cheat] code cave range overflows addr=0x%llx len=%zu",
+              static_cast<unsigned long long>(addr), len);
+    return -1;
+  }
+  const uint64_t end = addr + static_cast<uint64_t>(len);
+  if (end > max_address - (kPageSize - 1ULL)) {
+    LOG_ERROR("[Cheat] code cave page alignment overflows addr=0x%llx len=%zu",
+              static_cast<unsigned long long>(addr), len);
+    return -1;
+  }
+
   const uint64_t page_start = pageAlignDown(addr);
-  const uint64_t page_end = pageAlignUp(addr + len);
+  const uint64_t page_end = pageAlignUp(end);
   const size_t page_len = static_cast<size_t>(page_end - page_start);
 
   if (pt_attach_proc(pid) < 0) {
