@@ -140,6 +140,49 @@ extern bool is_handler_enabled;
 
 namespace {
 
+using WorkerEntry = void *(*)(void *);
+
+bool start_detached_worker(const char *name, WorkerEntry entry) {
+  pthread_t thread = nullptr;
+  const int create_rc = pthread_create(&thread, nullptr, entry, nullptr);
+  if (create_rc != 0) {
+    LOG_ERROR("[%s] pthread_create failed rc=%d", name, create_rc);
+    return false;
+  }
+
+  const int detach_rc = pthread_detach(thread);
+  if (detach_rc != 0) {
+    LOG_ERROR("[%s] pthread_detach failed rc=%d", name, detach_rc);
+    return false;
+  }
+  return true;
+}
+
+bool start_ipc_worker(pthread_t *thread) {
+  *thread = nullptr;
+  const int rc = pthread_create(thread, nullptr, IPC_loop, nullptr);
+  if (rc != 0) {
+    *thread = nullptr;
+    LOG_ERROR("[ipc] server thread creation failed rc=%d", rc);
+    return false;
+  }
+  return true;
+}
+
+void start_ipc_worker_with_retry(pthread_t *thread, const char *phase) {
+  unsigned int retry_delay_seconds = 1;
+  while (!start_ipc_worker(thread)) {
+    LOG_WARN("[ipc] retrying server thread %s in %u seconds", phase,
+             retry_delay_seconds);
+    sleep(retry_delay_seconds);
+    if (retry_delay_seconds < 30) {
+      retry_delay_seconds *= 2;
+      if (retry_delay_seconds > 30)
+        retry_delay_seconds = 30;
+    }
+  }
+}
+
 void install_crash_handlers() {
   struct sigaction action {};
   action.sa_handler = sig_handler;
@@ -151,49 +194,37 @@ void install_crash_handlers() {
 
 void start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
   if (app_jailbreak_runtime_start(app_jailbreak_thr)) {
-    pthread_t lifecycle_thr = nullptr;
-    if (pthread_create(&lifecycle_thr, nullptr, app_lifecycle_listener_thread,
-                       nullptr) == 0) {
-      pthread_detach(lifecycle_thr);
-    } else {
-      LOG_ERROR("[lifecycle] SceSysCore listener thread creation failed");
+    if (!start_detached_worker("lifecycle", app_lifecycle_listener_thread)) {
       onion::daemon::app_lifecycle::stop();
     }
   } else {
     LOG_ERROR("[lifecycle] Big App listener disabled: AppJailbreak runtime is "
               "not ready");
   }
-  pthread_create(msg_thr, nullptr, IPC_loop, nullptr);
   if (!onion::daemon::plugin_ipc::start())
     LOG_ERROR("plugin IPC server failed to start");
-  pthread_t ctrl_thr = nullptr;
-  pthread_create(&ctrl_thr, nullptr, control_tcp_loop, nullptr);
-  pthread_detach(ctrl_thr);
-  pthread_t supervisor_thr = nullptr;
-  pthread_create(&supervisor_thr, nullptr, runtime_supervisor_thread, nullptr);
-  pthread_detach(supervisor_thr);
-  pthread_t fan_thr = nullptr;
-  pthread_create(&fan_thr, nullptr, fan_maintenance_thread, nullptr);
-  pthread_detach(fan_thr);
-  pthread_t fps_thr = nullptr;
-  pthread_create(&fps_thr, nullptr, fps_sampler_thread, nullptr);
-  pthread_detach(fps_thr);
-  pthread_t vsync_fps_thr = nullptr;
-  pthread_create(&vsync_fps_thr, nullptr, vsync_fps_sampler_thread, nullptr);
-  pthread_detach(vsync_fps_thr);
-  pthread_t language_thr = nullptr;
-  pthread_create(&language_thr, nullptr, system_language_poll_thread, nullptr);
-  pthread_detach(language_thr);
-  pthread_t resume_thr = nullptr;
-  pthread_create(&resume_thr, nullptr, resume_recovery_thread, nullptr);
-  pthread_detach(resume_thr);
+  (void)start_detached_worker("control TCP", control_tcp_loop);
+  (void)start_detached_worker("runtime supervisor", runtime_supervisor_thread);
+  (void)start_detached_worker("fan maintenance", fan_maintenance_thread);
+  (void)start_detached_worker("FPS sampler", fps_sampler_thread);
+  (void)start_detached_worker("vsync FPS sampler", vsync_fps_sampler_thread);
+  (void)start_detached_worker("system language poll",
+                              system_language_poll_thread);
+  (void)start_detached_worker("resume recovery", resume_recovery_thread);
+  /* Do not publish daemon-ready without the core IPC service. */
+  start_ipc_worker_with_retry(msg_thr, "startup");
 }
 
 /** Keep IPC_loop alive: rejoin + restart on exit. */
 [[noreturn]] void ipc_supervisor_loop(pthread_t* msg_thr) {
   while (true) {
-    pthread_join(*msg_thr, nullptr);
-    pthread_create(msg_thr, nullptr, IPC_loop, nullptr);
+    const int join_rc = pthread_join(*msg_thr, nullptr);
+    if (join_rc != 0) {
+      LOG_ERROR("[ipc] server thread join failed rc=%d", join_rc);
+      sleep(1);
+      continue;
+    }
+    start_ipc_worker_with_retry(msg_thr, "restart");
     sleep(1);
   }
 }
