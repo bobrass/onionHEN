@@ -76,10 +76,32 @@ uint64_t virt2phys(uintptr_t addr, uint64_t dmap, uint64_t pml,
 }
 
 int copy_via_dmap(pid_t pid, uint64_t addr, void *buf, size_t len, bool to_proc) {
+  if (len > UINT64_MAX - addr)
+    return -1;
+
   uint64_t cr3 = 0;
   uint64_t dmap = 0;
   if (get_proc_cr3(pid, &cr3, &dmap) < 0)
     return -1;
+
+  /* Resolve the full destination before writing so a missing later page does
+   * not leave earlier chunks of a cross-page copy modified. */
+  if (to_proc) {
+    uint64_t check_addr = addr;
+    size_t check_left = len;
+    while (check_left > 0) {
+      uint64_t phys_end = 0;
+      const uint64_t phys =
+          virt2phys(static_cast<uintptr_t>(check_addr), dmap, cr3, &phys_end);
+      if (phys == static_cast<uint64_t>(-1) || phys_end <= phys)
+        return -1;
+      size_t chunk = static_cast<size_t>(phys_end - phys);
+      if (check_left < chunk)
+        chunk = check_left;
+      check_addr += chunk;
+      check_left -= chunk;
+    }
+  }
 
   auto *p = static_cast<uint8_t *>(buf);
   uint64_t vaddr = addr;
