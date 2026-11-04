@@ -52,18 +52,27 @@ static OnPressResult id_log_level(OnPressContext &ctx) {
 }
 
 static OnPressResult id_debug_jb(OnPressContext &ctx) {
-  if (atoi(ctx.value.c_str()) == g_settings.debug_app_jb_msg) {
+  bool enabled = false;
+  if (!parse_onpress_bool(ctx, &enabled)) {
+    LOG_WARN("Rejected debug JB state: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
+  if (enabled == g_settings.debug_app_jb_msg) {
     LOG_WARN("Debug JB already %s",
                 g_settings.debug_app_jb_msg ? "Enabled" : "Disabled");
     return OnPressResult::EarlyReturn;
   }
-  g_settings.debug_app_jb_msg = !g_settings.debug_app_jb_msg;
+  g_settings.debug_app_jb_msg = enabled;
   ctx.reload_main = true;
   return OnPressResult::Handled;
 }
 
 static OnPressResult id_app_jailbreak_enabled(OnPressContext &ctx) {
-  const bool enabled = value_as_int(ctx);
+  bool enabled = false;
+  if (!parse_onpress_bool(ctx, &enabled)) {
+    LOG_WARN("Rejected app jailbreak state: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
   if (enabled == g_settings.app_jailbreak_enabled) {
     LOG_WARN("App jailbreak listener already %s",
              enabled ? "Enabled" : "Disabled");
@@ -75,12 +84,17 @@ static OnPressResult id_app_jailbreak_enabled(OnPressContext &ctx) {
 }
 
 static OnPressResult id_custom_game_opts(OnPressContext &ctx) {
-  if (atoi(ctx.value.c_str()) == g_settings.onionhen_game_opts) {
+  bool enabled = false;
+  if (!parse_onpress_bool(ctx, &enabled)) {
+    LOG_WARN("Rejected OnionHEN Game Options state: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
+  if (enabled == g_settings.onionhen_game_opts) {
     LOG_WARN("OnionHEN Game Options already %s",
                 g_settings.onionhen_game_opts ? "Enabled" : "Disabled");
     return OnPressResult::EarlyReturn;
   }
-  g_settings.onionhen_game_opts = !g_settings.onionhen_game_opts;
+  g_settings.onionhen_game_opts = enabled;
   LOG_DEBUG("OnionHEN Game Options: %s",
               g_settings.onionhen_game_opts ? "Enabled" : "Disabled");
   return OnPressResult::Handled;

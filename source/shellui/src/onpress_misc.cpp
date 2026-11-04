@@ -8,7 +8,11 @@
 #include <unistd.h>
 
 OnPressResult onpress_kstuff_autoload(OnPressContext &ctx) {
-  const bool enabled = value_as_int(ctx);
+  bool enabled = false;
+  if (!parse_onpress_bool(ctx, &enabled)) {
+    LOG_WARN("Rejected kstuff autoload state: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
   if (enabled == g_settings.kstuff_autoload)
     return OnPressResult::EarlyReturn;
 

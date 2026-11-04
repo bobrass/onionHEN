@@ -27,10 +27,16 @@ static void rebuild_overlay_bar() {
 }
 
 static OnPressResult toggle_overlay_flag(OnPressContext &ctx, bool &flag) {
-  if (atoi(ctx.value.c_str()) == flag) {
+  bool enabled = false;
+  if (!parse_onpress_bool(ctx, &enabled)) {
+    LOG_WARN("Rejected overlay toggle value for %s: %s", ctx.id.c_str(),
+             ctx.value.c_str());
     return OnPressResult::EarlyReturn;
   }
-  flag = !flag;
+  if (enabled == flag) {
+    return OnPressResult::EarlyReturn;
+  }
+  flag = enabled;
   rebuild_overlay_bar();
   ctx.reload_main = true;
   return OnPressResult::Handled;
@@ -49,14 +55,19 @@ static OnPressResult id_overlay_gpu(OnPressContext &ctx) {
 }
 
 static OnPressResult id_overlay_cpu(OnPressContext &ctx) {
-  if (atoi(ctx.value.c_str()) == g_settings.overlay_cpu) {
+  bool enabled = false;
+  if (!parse_onpress_bool(ctx, &enabled)) {
+    LOG_WARN("Rejected CPU overlay state: %s", ctx.value.c_str());
     return OnPressResult::EarlyReturn;
   }
-  if (!atoi(ctx.value.c_str()) && g_settings.all_cpu_usage) {
+  if (enabled == g_settings.overlay_cpu) {
+    return OnPressResult::EarlyReturn;
+  }
+  if (!enabled && g_settings.all_cpu_usage) {
     notify("notify.overlay.disable_cpu_first");
     return OnPressResult::EarlyReturn;
   }
-  g_settings.overlay_cpu = !g_settings.overlay_cpu;
+  g_settings.overlay_cpu = enabled;
   rebuild_overlay_bar();
   ctx.reload_main = true;
   return OnPressResult::Handled;
@@ -79,7 +90,12 @@ static OnPressResult id_overlay_fan(OnPressContext &ctx) {
 }
 
 static OnPressResult id_all_cpu_usage(OnPressContext &ctx) {
-  if (g_settings.all_cpu_usage == atoi(ctx.value.c_str())) {
+  bool enabled = false;
+  if (!parse_onpress_bool(ctx, &enabled)) {
+    LOG_WARN("Rejected all CPU usage state: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
+  if (g_settings.all_cpu_usage == enabled) {
     return OnPressResult::EarlyReturn;
   }
   if (!g_settings.overlay_cpu) {
@@ -87,7 +103,7 @@ static OnPressResult id_all_cpu_usage(OnPressContext &ctx) {
     return OnPressResult::EarlyReturn;
   }
   /* Persisted via settings_commit as overlay.cpu_usage_mode in config.ini. */
-  g_settings.all_cpu_usage = !g_settings.all_cpu_usage;
+  g_settings.all_cpu_usage = enabled;
   rebuild_overlay_bar();
   ctx.reload_main = true;
   return OnPressResult::Handled;

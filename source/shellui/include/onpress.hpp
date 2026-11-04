@@ -10,7 +10,10 @@
 #include "ipc.hpp"
 #include <onion/platform.h>
 #include <onion/proc_query.h>
+#include <cerrno>
+#include <cctype>
 #include <cstddef>
+#include <cstdlib>
 #include <string>
 
 /** Per-press context shared by domain handlers. */
@@ -80,11 +83,23 @@ const OnPressPrefixEntry *onpress_pkg_installer_prefix(size_t *count);
 OnPressResult onpress_kstuff_autoload(OnPressContext &ctx);
 OnPressResult onpress_delete_kstuff(OnPressContext &ctx);
 
-/** Shared toggle helpers. */
-inline bool value_as_int(const OnPressContext &ctx) {
-  return atoi(ctx.value.c_str());
-}
-
-inline bool value_as_long(const OnPressContext &ctx) {
-  return atol(ctx.value.c_str());
+/** Parse the explicit 0/1 value used by ShellUI toggle controls. */
+inline bool parse_onpress_bool(const OnPressContext &ctx, bool *value) {
+  if (!value) {
+    return false;
+  }
+  errno = 0;
+  char *end = nullptr;
+  const long parsed = std::strtol(ctx.value.c_str(), &end, 10);
+  if (errno == ERANGE || end == ctx.value.c_str()) {
+    return false;
+  }
+  while (*end && std::isspace(static_cast<unsigned char>(*end))) {
+    ++end;
+  }
+  if (*end != '\0' || (parsed != 0 && parsed != 1)) {
+    return false;
+  }
+  *value = parsed != 0;
+  return true;
 }
