@@ -1,9 +1,12 @@
 #include <onion/log.h>
 #include "cheats/i_cheat_parser.hpp"
 
+#include <charconv>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <system_error>
 #include <vector>
 
 #include "cheats/cheat_engine_internal.h"
@@ -13,7 +16,7 @@ namespace onion::cheats {
 namespace {
 
 const char *findXmlTagValue(const char *start, const char *tag, char *out,
-                            size_t out_size) {
+                            size_t out_size, bool *truncated = nullptr) {
   char open_tag[64];
   char close_tag[64];
 
@@ -33,6 +36,9 @@ const char *findXmlTagValue(const char *start, const char *tag, char *out,
   }
 
   size_t len = static_cast<size_t>(close - open);
+  if (truncated != nullptr) {
+    *truncated = len >= out_size;
+  }
   if (len >= out_size) {
     len = out_size - 1;
   }
@@ -40,6 +46,33 @@ const char *findXmlTagValue(const char *start, const char *tag, char *out,
   out[len] = '\0';
   onion_cheat_xml_unescape(out);
   return close + std::strlen(close_tag);
+}
+
+bool parseSectionNumber(const char *text, int *section) {
+  if (text == nullptr || section == nullptr) {
+    return false;
+  }
+
+  const char *begin = text;
+  const char *end = text + std::strlen(text);
+  while (begin < end && std::isspace(static_cast<unsigned char>(*begin))) {
+    ++begin;
+  }
+  while (begin < end && std::isspace(static_cast<unsigned char>(end[-1]))) {
+    --end;
+  }
+  if (begin == end) {
+    return false;
+  }
+
+  int parsed = 0;
+  const auto result = std::from_chars(begin, end, parsed, 10);
+  if (result.ec != std::errc{} || result.ptr != end || parsed < 0 ||
+      parsed >= MODULE_INFO_MAX_SECTIONS) {
+    return false;
+  }
+  *section = parsed;
+  return true;
 }
 
 int findXmlAttr(const char *start, const char *tag, const char *attr, char *out,
@@ -155,6 +188,7 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       char on[512];
       char off[512];
       char absolute[32];
+      bool section_truncated = false;
       onion_patch_t *patch = nullptr;
 
       if (line_end == nullptr || line_end > cheat_end) {
@@ -169,7 +203,8 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       off[0] = '\0';
       absolute[0] = '\0';
       findXmlTagValue(line_cursor, "Offset", offset, sizeof(offset));
-      findXmlTagValue(line_cursor, "Section", section, sizeof(section));
+      findXmlTagValue(line_cursor, "Section", section, sizeof(section),
+                      &section_truncated);
       findXmlTagValue(line_cursor, "ValueOn", on, sizeof(on));
       findXmlTagValue(line_cursor, "ValueOff", off, sizeof(off));
       findXmlTagValue(line_cursor, "Absolute", absolute, sizeof(absolute));
@@ -188,11 +223,8 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       patch = &entry->patches[entry->patch_count];
       std::memset(patch, 0, sizeof(*patch));
       patch->offset = std::strtoull(offset, nullptr, 16);
-      if (section[0] != '\0') {
-        const int section_num = std::atoi(section);
-        if (section_num < MODULE_INFO_MAX_SECTIONS) {
-          patch->section = section_num;
-        }
+      if (!section_truncated) {
+        (void)parseSectionNumber(section, &patch->section);
       }
       patch->absolute = absolute[0] != '\0';
 
