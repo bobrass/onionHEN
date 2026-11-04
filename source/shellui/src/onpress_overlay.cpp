@@ -110,17 +110,28 @@ static OnPressResult id_all_cpu_usage(OnPressContext &ctx) {
 }
 
 static OnPressResult id_overlay_change_pos(OnPressContext &ctx) {
-  if ((overlay_positions)atoi(ctx.value.c_str()) == g_settings.overlay_pos) {
+  int position = 0;
+  if (!parse_onpress_int(ctx, &position) ||
+      (position != OVERLAY_POS_TOP_LEFT &&
+       position != OVERLAY_POS_BOTTOM_LEFT)) {
+    LOG_WARN("Rejected overlay position: %s", ctx.value.c_str());
     return OnPressResult::EarlyReturn;
   }
-  g_settings.overlay_pos = atoi(ctx.value.c_str());
+  if (position == g_settings.overlay_pos) {
+    return OnPressResult::EarlyReturn;
+  }
+  g_settings.overlay_pos = position;
   rebuild_overlay_bar();
   ctx.reload_main = true;
   return OnPressResult::Handled;
 }
 
 static OnPressResult id_overlay_align(OnPressContext &ctx) {
-  const int align = atoi(ctx.value.c_str());
+  int align = 0;
+  if (!parse_onpress_int(ctx, &align) || align < 0 || align > 2) {
+    LOG_WARN("Rejected overlay alignment: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
   if (align == g_settings.overlay_align) {
     return OnPressResult::EarlyReturn;
   }
@@ -131,14 +142,18 @@ static OnPressResult id_overlay_align(OnPressContext &ctx) {
 }
 
 static OnPressResult id_overlay_font_size(OnPressContext &ctx) {
-  const int size = atoi(ctx.value.c_str());
+  int size = 0;
+  if (!parse_onpress_int(ctx, &size) ||
+      (size != onion::kOverlayFontSmall &&
+       size != onion::kOverlayFontMedium &&
+       size != onion::kOverlayFontLarge)) {
+    LOG_WARN("Rejected overlay font size: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
   if (size == g_settings.overlay_font_size) {
     return OnPressResult::EarlyReturn;
   }
-  if (size != onion::kOverlayFontSmall && size != onion::kOverlayFontMedium &&
-      size != onion::kOverlayFontLarge) {
-    return OnPressResult::EarlyReturn;
-  }
+
   g_settings.overlay_font_size = size;
   rebuild_overlay_bar();
   ctx.reload_main = true;
@@ -146,15 +161,19 @@ static OnPressResult id_overlay_font_size(OnPressContext &ctx) {
 }
 
 static OnPressResult overlay_set_order(OnPressContext &ctx, int metric) {
-  const int position = atoi(ctx.value.c_str());
+  int position = 0;
+  if (!parse_onpress_int(ctx, &position) || position < 1 ||
+      position > onion::kOverlayMetricCount) {
+    LOG_WARN("Rejected overlay metric position for %s: %s", ctx.id.c_str(),
+             ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
   const int current =
       onion::overlay_metric_position(g_settings.overlay_order, metric);
   if (position == current) {
     return OnPressResult::EarlyReturn;
   }
-  if (position < 1 || position > onion::kOverlayMetricCount) {
-    return OnPressResult::EarlyReturn;
-  }
+
   onion::overlay_move_metric(g_settings.overlay_order, metric, position);
   rebuild_overlay_bar();
   ctx.reload_main = true;

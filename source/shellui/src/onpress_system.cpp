@@ -101,9 +101,12 @@ static OnPressResult id_custom_game_opts(OnPressContext &ctx) {
 }
 
 static OnPressResult id_ui_lang(OnPressContext &ctx) {
-  int v = atoi(ctx.value.c_str());
-  if (v < onion::kUiLanguageSystem || v > onion::kUiLanguageTh)
-    v = onion::kUiLanguageSystem;
+  int v = 0;
+  if (!parse_onpress_int(ctx, &v) ||
+      v < onion::kUiLanguageSystem || v > onion::kUiLanguageTh) {
+    LOG_WARN("Rejected UI language: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
   if (v == g_settings.ui_lang)
     return OnPressResult::EarlyReturn;
   g_settings.ui_lang = v;
@@ -185,11 +188,17 @@ static OnPressResult id_cheats_mirror(OnPressContext &ctx) {
 }
 
 static OnPressResult id_cheats_shortcut(OnPressContext &ctx) {
-  if (atoi(ctx.value.c_str()) == g_settings.cheats_shortcut_opt) {
+  int requested = 0;
+  if (!parse_onpress_int(ctx, &requested) || requested < CHEATS_SC_OFF ||
+      requested > CHEATS_SINGLE_SHARE) {
+    LOG_WARN("Rejected cheats shortcut: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
+  if (requested == g_settings.cheats_shortcut_opt) {
     LOG_WARN("Cheats_shortcut already %i", g_settings.cheats_shortcut_opt);
     return OnPressResult::EarlyReturn;
   }
-  Cheats_Shortcut opt = (Cheats_Shortcut)atoi(ctx.value.c_str());
+  Cheats_Shortcut opt = static_cast<Cheats_Shortcut>(requested);
   if (opt == CHEATS_SINGLE_SHARE) {
     if (g_settings.toolbox_shortcut_opt == TOOLBOX_SINGLE_SHARE) {
       notify("notify.shortcut.toolbox_cheats");
@@ -206,12 +215,18 @@ static OnPressResult id_cheats_shortcut(OnPressContext &ctx) {
 }
 
 static OnPressResult id_toolbox_shortcut(OnPressContext &ctx) {
-  if (atoi(ctx.value.c_str()) == g_settings.toolbox_shortcut_opt) {
+  int requested = 0;
+  if (!parse_onpress_int(ctx, &requested) || requested < TOOLBOX_SC_OFF ||
+      requested > TOOLBOX_SINGLE_SHARE) {
+    LOG_WARN("Rejected Toolbox shortcut: %s", ctx.value.c_str());
+    return OnPressResult::EarlyReturn;
+  }
+  if (requested == g_settings.toolbox_shortcut_opt) {
     LOG_WARN("toolbox_shortcut_opt already %i",
                 g_settings.toolbox_shortcut_opt);
     return OnPressResult::EarlyReturn;
   }
-  Toolbox_Shortcut opt = (Toolbox_Shortcut)atoi(ctx.value.c_str());
+  Toolbox_Shortcut opt = static_cast<Toolbox_Shortcut>(requested);
   if (opt == TOOLBOX_SINGLE_SHARE) {
     if (g_settings.cheats_shortcut_opt == CHEATS_SINGLE_SHARE) {
       notify("notify.shortcut.cheats_toolbox");

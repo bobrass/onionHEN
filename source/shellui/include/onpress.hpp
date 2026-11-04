@@ -12,6 +12,7 @@
 #include <onion/proc_query.h>
 #include <cerrno>
 #include <cctype>
+#include <climits>
 #include <cstddef>
 #include <cstdlib>
 #include <string>
@@ -82,6 +83,27 @@ const OnPressPrefixEntry *onpress_pkg_installer_prefix(size_t *count);
  */
 OnPressResult onpress_kstuff_autoload(OnPressContext &ctx);
 OnPressResult onpress_delete_kstuff(OnPressContext &ctx);
+
+/** Parse a complete, in-range decimal value from a ShellUI list or field. */
+inline bool parse_onpress_int(const OnPressContext &ctx, int *value) {
+  if (!value) {
+    return false;
+  }
+  errno = 0;
+  char *end = nullptr;
+  const long parsed = std::strtol(ctx.value.c_str(), &end, 10);
+  if (errno == ERANGE || end == ctx.value.c_str()) {
+    return false;
+  }
+  while (*end && std::isspace(static_cast<unsigned char>(*end))) {
+    ++end;
+  }
+  if (*end != 0 || parsed < INT_MIN || parsed > INT_MAX) {
+    return false;
+  }
+  *value = static_cast<int>(parsed);
+  return true;
+}
 
 /** Parse the explicit 0/1 value used by ShellUI toggle controls. */
 inline bool parse_onpress_bool(const OnPressContext &ctx, bool *value) {
