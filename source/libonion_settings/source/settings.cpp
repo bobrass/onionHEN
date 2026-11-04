@@ -17,9 +17,11 @@ along with this program; see the file COPYING. If not, see
 #include <onion/settings.hpp>
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
-#include <cstdlib>
+#include <climits>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <memory>
@@ -47,8 +49,21 @@ bool dir_writable_parent(const char *path) {
   return true;
 }
 
-int atoi_def(const char *s, int def) {
-  return s ? atoi(s) : def;
+int parse_int_def(const char *s, int def) {
+  if (!s) {
+    return def;
+  }
+
+  errno = 0;
+  char *end = nullptr;
+  const long value = std::strtol(s, &end, 10);
+  if (errno == ERANGE || end == s || value < INT_MIN || value > INT_MAX) {
+    return def;
+  }
+  while (*end && std::isspace(static_cast<unsigned char>(*end))) {
+    ++end;
+  }
+  return *end == '\0' ? static_cast<int>(value) : def;
 }
 
 bool streq_ci(const char *a, const char *b) {
@@ -86,7 +101,7 @@ bool parse_bool(const char *s, bool def) {
 }
 
 int parse_int_range(const char *s, int def, int min, int max) {
-  const int v = atoi_def(s, def);
+  const int v = parse_int_def(s, def);
   return v < min || v > max ? def : v;
 }
 
@@ -632,7 +647,7 @@ const char *toolbox_shortcut_name(int v) {
 std::string bool_text(bool value) { return value ? "true" : "false"; }
 
 bool apply_parser(IniParser *parser, Settings *out) {
-  const int version = atoi_def(ini_get(parser, "meta.schema_version"), -1);
+  const int version = parse_int_def(ini_get(parser, "meta.schema_version"), -1);
   if (version != kSettingsSchemaVersion) {
     return false;
   }
@@ -649,7 +664,7 @@ bool apply_parser(IniParser *parser, Settings *out) {
       has_pkg_path_count && trim_copy(pkg_path_count) == "0";
   const int declared_path_count =
       has_pkg_path_count ? std::max(0, std::min(
-                                  atoi_def(pkg_path_count, 0),
+                                  parse_int_def(pkg_path_count, 0),
                                   static_cast<int>(kMaxCustomPkgSearchPaths)))
                          : static_cast<int>(kMaxCustomPkgSearchPaths);
   for (int i = 0; i < declared_path_count; ++i) {
