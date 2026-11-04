@@ -491,6 +491,7 @@ struct MonoHookSpec {
 };
 
 bool install_mono_hook(const MonoHookSpec& h, bool expected_missing = false) {
+  LOG_INFO("Resolving mono hook: %s", h.name);
   const uint64_t addr =
       Get_Address_of_Method(h.image, h.name_space, h.klass, h.method, h.argc,
                             false);
@@ -503,7 +504,7 @@ bool install_mono_hook(const MonoHookSpec& h, bool expected_missing = false) {
     }
     return !h.required;
   }
-  LOG_DEBUG("Installing mono hook: %s target=%#02lx hook=%p", h.name, addr,
+  LOG_INFO("Installing mono hook: %s target=%#02lx hook=%p", h.name, addr,
               h.hook);
   if (!InstallDetour(addr, h.hook, h.orig, h.required)) {
     if (h.required) {
@@ -520,12 +521,14 @@ bool install_mono_hook(const MonoHookSpec& h, bool expected_missing = false) {
 bool install_optional_diag(const char* tag, MonoImage* image, const char* ns,
                            const char* klass, const char* method, int argc,
                            void* hook, void** orig) {
+  LOG_INFO("Resolving optional hook: %s", tag);
   const uint64_t addr = Get_Address_of_Method(image, ns, klass, method, argc,
                                                false);
   if (!addr) {
     LOG_WARN("%s unavailable (non-fatal)", tag);
     return false;
   }
+  LOG_INFO("Installing optional hook: %s target=%#02lx", tag, addr);
   const bool installed = InstallDetour(addr, hook, orig, false);
   if (!installed) {
     LOG_WARN("%s detour unavailable (non-fatal)", tag);
