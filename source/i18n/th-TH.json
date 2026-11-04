@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s: ไม่พบเวอร์ชันเฟิร์มแวร์",
     "notify.cheats.backend_unavailable": "%s: ไม่สามารถใช้แบ็กเอนด์หน่วยความจำได้",
     "notify.cheats.module_missing": "ไม่พบโมดูล: %s",
-    "notify.cheats.invalid_patch": "%s: ขนาดแพตช์ไม่ถูกต้อง",
+    "notify.cheats.invalid_patch": "%s: ข้อมูลแพตช์ไม่ถูกต้อง",
     "notify.cheats.asm_unassembled": "%s: แพตช์แอสเซมบลียังไม่ได้ประกอบ",
     "notify.cheats.snapshot_failed": "%s: อ่านหน่วยความจำต้นฉบับไม่สำเร็จ",
     "notify.cheats.write_failed": "%s: เขียนไม่สำเร็จ",

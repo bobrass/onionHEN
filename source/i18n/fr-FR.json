@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s : version du firmware indisponible",
     "notify.cheats.backend_unavailable": "%s : backend mémoire indisponible",
     "notify.cheats.module_missing": "Module introuvable : %s",
-    "notify.cheats.invalid_patch": "%s : taille de patch invalide",
+    "notify.cheats.invalid_patch": "%s : données de patch invalides",
     "notify.cheats.asm_unassembled": "%s : patch assembleur non assemblé",
     "notify.cheats.snapshot_failed": "%s : lecture mémoire d’origine impossible",
     "notify.cheats.write_failed": "%s : échec de l’écriture",

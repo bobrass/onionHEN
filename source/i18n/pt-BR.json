@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s: versão do firmware indisponível",
     "notify.cheats.backend_unavailable": "%s: backend de memória indisponível",
     "notify.cheats.module_missing": "Módulo não encontrado: %s",
-    "notify.cheats.invalid_patch": "%s: tamanho de patch inválido",
+    "notify.cheats.invalid_patch": "%s: dados do patch inválidos",
     "notify.cheats.asm_unassembled": "%s: patch em assembly não montado",
     "notify.cheats.snapshot_failed": "%s: falha ao ler a memória original",
     "notify.cheats.write_failed": "%s: falha na gravação",

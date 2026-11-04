@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s：无法读取固件版本",
     "notify.cheats.backend_unavailable": "%s：内存后端不可用",
     "notify.cheats.module_missing": "未找到模块：%s",
-    "notify.cheats.invalid_patch": "%s：补丁长度无效",
+    "notify.cheats.invalid_patch": "%s：补丁数据无效",
     "notify.cheats.asm_unassembled": "%s：汇编补丁未汇编",
     "notify.cheats.snapshot_failed": "%s：无法读取原始内存",
     "notify.cheats.write_failed": "%s：写入失败",

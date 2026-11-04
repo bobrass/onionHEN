@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s: Firmware-Version nicht verfügbar",
     "notify.cheats.backend_unavailable": "%s: Speicher-Backend nicht verfügbar",
     "notify.cheats.module_missing": "Modul nicht gefunden: %s",
-    "notify.cheats.invalid_patch": "%s: ungültige Patch-Größe",
+    "notify.cheats.invalid_patch": "%s: ungültige Patch-Daten",
     "notify.cheats.asm_unassembled": "%s: Assembler-Patch nicht assembliert",
     "notify.cheats.snapshot_failed": "%s: Originalspeicher konnte nicht gelesen werden",
     "notify.cheats.write_failed": "%s: Schreiben fehlgeschlagen",

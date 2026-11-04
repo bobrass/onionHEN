@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s：ファームウェアバージョンを取得できません",
     "notify.cheats.backend_unavailable": "%s：メモリバックエンドを利用できません",
     "notify.cheats.module_missing": "モジュールが見つかりません: %s",
-    "notify.cheats.invalid_patch": "%s：パッチサイズが無効です",
+    "notify.cheats.invalid_patch": "%s：パッチデータが無効です",
     "notify.cheats.asm_unassembled": "%s：アセンブリパッチが未アセンブルです",
     "notify.cheats.snapshot_failed": "%s：元のメモリを読み取れません",
     "notify.cheats.write_failed": "%s：書き込みに失敗しました",

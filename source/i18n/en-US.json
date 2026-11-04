@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s: firmware version unavailable",
     "notify.cheats.backend_unavailable": "%s: memory backend unavailable",
     "notify.cheats.module_missing": "Module not found: %s",
-    "notify.cheats.invalid_patch": "%s: invalid patch size",
+    "notify.cheats.invalid_patch": "%s: invalid patch data",
     "notify.cheats.asm_unassembled": "%s: ASM text not assembled",
     "notify.cheats.snapshot_failed": "%s: snapshot read failed",
     "notify.cheats.write_failed": "%s: write failed",

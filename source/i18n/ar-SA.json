@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s: إصدار البرنامج الثابت غير متاح",
     "notify.cheats.backend_unavailable": "%s: واجهة الذاكرة غير متاحة",
     "notify.cheats.module_missing": "لم يتم العثور على الوحدة: %s",
-    "notify.cheats.invalid_patch": "%s: حجم الرقعة غير صالح",
+    "notify.cheats.invalid_patch": "%s: بيانات الرقعة غير صالحة",
     "notify.cheats.asm_unassembled": "%s: رقعة التجميع غير مُجمَّعة",
     "notify.cheats.snapshot_failed": "%s: تعذّر قراءة الذاكرة الأصلية",
     "notify.cheats.write_failed": "%s: فشلت الكتابة",

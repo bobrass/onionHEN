@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s: niedostępna wersja oprogramowania",
     "notify.cheats.backend_unavailable": "%s: niedostępny backend pamięci",
     "notify.cheats.module_missing": "Nie znaleziono modułu: %s",
-    "notify.cheats.invalid_patch": "%s: nieprawidłowy rozmiar łatki",
+    "notify.cheats.invalid_patch": "%s: nieprawidłowe dane łatki",
     "notify.cheats.asm_unassembled": "%s: łatka asemblerowa nie została złożona",
     "notify.cheats.snapshot_failed": "%s: nie udało się odczytać oryginalnej pamięci",
     "notify.cheats.write_failed": "%s: zapis nie powiódł się",

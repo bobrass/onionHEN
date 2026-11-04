@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s: versión de firmware no disponible",
     "notify.cheats.backend_unavailable": "%s: backend de memoria no disponible",
     "notify.cheats.module_missing": "Módulo no encontrado: %s",
-    "notify.cheats.invalid_patch": "%s: tamaño de parche no válido",
+    "notify.cheats.invalid_patch": "%s: datos de parche no válidos",
     "notify.cheats.asm_unassembled": "%s: el parche de ensamblador no está ensamblado",
     "notify.cheats.snapshot_failed": "%s: no se pudo leer la memoria original",
     "notify.cheats.write_failed": "%s: error de escritura",

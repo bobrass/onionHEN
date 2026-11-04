@@ -460,7 +460,7 @@
     "notify.cheats.fw_unavailable": "%s：無法讀取韌體版本",
     "notify.cheats.backend_unavailable": "%s：記憶體後端不可用",
     "notify.cheats.module_missing": "找不到模組：%s",
-    "notify.cheats.invalid_patch": "%s：補丁長度無效",
+    "notify.cheats.invalid_patch": "%s：補丁資料無效",
     "notify.cheats.asm_unassembled": "%s：組譯補丁尚未組譯",
     "notify.cheats.snapshot_failed": "%s：無法讀取原始記憶體",
     "notify.cheats.write_failed": "%s：寫入失敗",
