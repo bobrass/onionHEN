@@ -1,6 +1,7 @@
 #include <onion/log.h>
 #include "cheats/i_cheat_parser.hpp"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -73,6 +74,26 @@ int findXmlAttr(const char *start, const char *tag, const char *attr, char *out,
   out[len] = '\0';
   onion_cheat_xml_unescape(out);
   return 0;
+}
+
+bool parse_section_index(const char *text, int &out) {
+  if (!text || !text[0])
+    return false;
+  for (const unsigned char *cursor =
+           reinterpret_cast<const unsigned char *>(text);
+       *cursor; ++cursor) {
+    if (*cursor < '0' || *cursor > '9')
+      return false;
+  }
+
+  errno = 0;
+  char *end = nullptr;
+  const long value = std::strtol(text, &end, 10);
+  if (errno != 0 || end == text || *end != '\0' || value < 0 ||
+      value >= MODULE_INFO_MAX_SECTIONS)
+    return false;
+  out = static_cast<int>(value);
+  return true;
 }
 
 void stripDashes(char *s) {
@@ -189,8 +210,8 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       std::memset(patch, 0, sizeof(*patch));
       patch->offset = std::strtoull(offset, nullptr, 16);
       if (section[0] != '\0') {
-        const int section_num = std::atoi(section);
-        if (section_num < MODULE_INFO_MAX_SECTIONS) {
+        int section_num = 0;
+        if (parse_section_index(section, section_num)) {
           patch->section = section_num;
         }
       }
