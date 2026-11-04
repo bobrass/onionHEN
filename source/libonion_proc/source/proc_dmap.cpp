@@ -9,6 +9,7 @@
 #include <ps5/kernel.h>
 
 #include <cstdint>
+#include <limits>
 
 namespace {
 
@@ -76,6 +77,10 @@ uint64_t virt2phys(uintptr_t addr, uint64_t dmap, uint64_t pml,
 }
 
 int copy_via_dmap(pid_t pid, uint64_t addr, void *buf, size_t len, bool to_proc) {
+  /* Keep vaddr += chunk below within the requested virtual address range. */
+  if (len == 0 || len > std::numeric_limits<uint64_t>::max() - addr)
+    return -1;
+
   uint64_t cr3 = 0;
   uint64_t dmap = 0;
   if (get_proc_cr3(pid, &cr3, &dmap) < 0)
