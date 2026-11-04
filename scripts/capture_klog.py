@@ -2,6 +2,7 @@
 """Capture a PS5 kernel log from klogsrv using only the Python standard library."""
 
 import argparse
+import os
 import socket
 import sys
 
@@ -32,10 +33,38 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        output = open(args.output, "xb")
+    except FileExistsError:
+        print(
+            f"error: {args.output} already exists; choose another --output path",
+            file=sys.stderr,
+        )
+        return 2
+    except OSError as exc:
+        print(f"error: cannot create {args.output}: {exc}", file=sys.stderr)
+        return 1
+
+    try:
         connection = socket.create_connection(
             (args.console_ip, args.port), timeout=10
         )
     except OSError as exc:
+        try:
+            created = os.fstat(output.fileno())
+        except OSError:
+            created = None
+        output.close()
+        if created is not None:
+            try:
+                current = os.stat(args.output, follow_symlinks=False)
+                if (
+                    current.st_dev == created.st_dev
+                    and current.st_ino == created.st_ino
+                    and current.st_size == 0
+                ):
+                    os.unlink(args.output)
+            except OSError:
+                pass
         print(
             f"error: cannot connect to {args.console_ip}:{args.port}: {exc}",
             file=sys.stderr,
@@ -44,33 +73,25 @@ def main() -> int:
 
     received = 0
     try:
-        with connection:
+        with connection, output:
             connection.settimeout(None)
-            with open(args.output, "xb") as output:
-                print(
-                    f"Connected to {args.console_ip}:{args.port}; "
-                    f"capturing to {args.output}. Press Ctrl+C to stop.",
-                    file=sys.stderr,
-                )
-                try:
-                    while True:
-                        chunk = connection.recv(65536)
-                        if not chunk:
-                            break
-                        output.write(chunk)
-                        received += len(chunk)
-                except KeyboardInterrupt:
-                    print("Capture stopped.", file=sys.stderr)
-    except FileExistsError:
-        print(
-            f"error: {args.output} already exists; choose another --output path",
-            file=sys.stderr,
-        )
-        return 2
+            print(
+                f"Connected to {args.console_ip}:{args.port}; "
+                f"capturing to {args.output}. Press Ctrl+C to stop.",
+                file=sys.stderr,
+            )
+            try:
+                while True:
+                    chunk = connection.recv(65536)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+                    received += len(chunk)
+            except KeyboardInterrupt:
+                print("Capture stopped.", file=sys.stderr)
     except OSError as exc:
         print(f"error: capture failed: {exc}", file=sys.stderr)
         return 1
-
     print(f"Saved {received} bytes to {args.output}.", file=sys.stderr)
     return 0
 
