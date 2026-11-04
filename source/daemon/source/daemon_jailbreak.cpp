@@ -242,7 +242,7 @@ bool jb_apply_privileges(pid_t pid, bool escape_sandbox) {
               static_cast<int>(pid));
     return false;
   }
-  attrs[3] = 0x80;
+  attrs[3] |= 0x80;
   if (kernel_set_ucred_attrs(pid, attrs) != 0) {
     LOG_ERROR("[JB] kernel_set_ucred_attrs failed pid=%d",
               static_cast<int>(pid));
