@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <libgen.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -172,8 +173,14 @@ uint8_t *onion_payload_read_file(const char *path, size_t *out_size) {
     close(fd);
     return NULL;
   }
+  if ((uintmax_t)st.st_size > (uintmax_t)SIZE_MAX) {
+    LOG_ERROR("Payload file is too large to read: %s", path);
+    close(fd);
+    return NULL;
+  }
 
-  uint8_t *buf = (uint8_t *)malloc((size_t)st.st_size);
+  const size_t file_size = (size_t)st.st_size;
+  uint8_t *buf = (uint8_t *)malloc(file_size);
   if (!buf) {
     LOG_ERROR("Failed to allocate %lld bytes for payload",
                  (long long)st.st_size);
@@ -181,14 +188,25 @@ uint8_t *onion_payload_read_file(const char *path, size_t *out_size) {
     return NULL;
   }
 
-  if (read(fd, buf, (size_t)st.st_size) != st.st_size) {
-    LOG_ERROR("Failed to read payload file %s", path);
-    free(buf);
-    close(fd);
-    return NULL;
+  size_t total_read = 0;
+  while (total_read < file_size) {
+    const size_t remaining = file_size - total_read;
+    const size_t chunk = remaining < 64 * 1024 ? remaining : 64 * 1024;
+    const ssize_t bytes_read = read(fd, buf + total_read, chunk);
+    if (bytes_read < 0 && errno == EINTR) {
+      continue;
+    }
+    if (bytes_read <= 0) {
+      LOG_ERROR("Failed to read payload file %s after %zu of %zu bytes", path,
+                total_read, file_size);
+      free(buf);
+      close(fd);
+      return NULL;
+    }
+    total_read += (size_t)bytes_read;
   }
   close(fd);
-  *out_size = (size_t)st.st_size;
+  *out_size = file_size;
   return buf;
 }
 
