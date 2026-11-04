@@ -91,6 +91,10 @@ static void handleIPC_adapt(onion::IpcClientArgs *client, std::string &msg,
 static std::atomic_bool g_util_ipc_running{true};
 static std::atomic<int> g_util_ipc_server_fd{-1};
 
+bool util_ipc_server_is_listening() {
+  return g_util_ipc_server_fd.load(std::memory_order_acquire) >= 0;
+}
+
 static onion::IpcServerOptions g_util_ipc_opts = {
     UTIL_IPC_SOC,
     handleIPC_adapt,

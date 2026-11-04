@@ -58,6 +58,7 @@ extern bool is_handler_enabled;
 onion::SettingsStore g_settings;
 void start_ip_thread(void);
 void* IPC_loop(void* args);
+bool util_ipc_server_is_listening(void);
 bool shellui_patch(void);
 
 jmp_buf g_catch_buf;
@@ -135,8 +136,27 @@ int main(void) {
     LoadSettings();
 
     start_ip_thread();
-    pthread_create(&ipc_server, NULL, IPC_loop, NULL);
-    /* IPC thread is up — publish ready for bootstrapper/daemon consumers */
+    const int ipc_thread_result =
+        pthread_create(&ipc_server, NULL, IPC_loop, NULL);
+    if (ipc_thread_result != 0) {
+        LOG_ERROR("Failed to create utility IPC thread rc=%d",
+                  ipc_thread_result);
+        return ipc_thread_result;
+    }
+    constexpr int kIpcReadyTimeoutMs = 15000;
+    constexpr int kIpcReadyPollMs = 100;
+    int waited_ms = 0;
+    while (waited_ms < kIpcReadyTimeoutMs &&
+           !util_ipc_server_is_listening()) {
+        usleep(kIpcReadyPollMs * 1000);
+        waited_ms += kIpcReadyPollMs;
+    }
+    if (!util_ipc_server_is_listening()) {
+        LOG_ERROR("Utility IPC server did not listen within %d ms",
+                  kIpcReadyTimeoutMs);
+        return 1;
+    }
+    /* The listener is bound; publish ready for bootstrapper/daemon consumers. */
     onion_ready_signal_pid(ONION_READY_UTIL, getpid());
 
     if (onion_ready_is_set(ONION_FLAG_UTIL_BOOTED)) {
