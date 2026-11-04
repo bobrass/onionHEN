@@ -10,6 +10,8 @@
 #include <onion/proc_query.h>
 #include <onion/system_tmp.h>
 
+#include <cerrno>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
@@ -39,11 +41,30 @@ pid_t shellui_payload_read_pid_file(const char *pid_path) {
   char t[32];
   const int r = (int)read(f, t, sizeof(t) - 1);
   close(f);
-  if (r <= 0) {
+  if (r <= 0 || static_cast<size_t>(r) >= sizeof(t) - 1) {
     return -1;
   }
   t[r] = '\0';
-  return (pid_t)atoi(t);
+  size_t digits = static_cast<size_t>(r);
+  if (t[digits - 1] == '\n') {
+    t[--digits] = '\0';
+  }
+  if (digits == 0) {
+    return -1;
+  }
+  for (size_t i = 0; i < digits; ++i) {
+    if (t[i] < '0' || t[i] > '9') {
+      return -1;
+    }
+  }
+
+  errno = 0;
+  char *end = nullptr;
+  const long parsed = std::strtol(t, &end, 10);
+  if (errno != 0 || end == t || *end != '\0' || parsed > INT_MAX) {
+    return -1;
+  }
+  return static_cast<pid_t>(parsed);
 }
 
 pid_t shellui_payload_validate_pid(pid_t pid, const char *pid_path,
