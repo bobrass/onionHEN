@@ -152,7 +152,10 @@ public:
       failure = errno;
       failed_operation = "replace marker";
     }
-    unlink(temp_path.c_str());
+    if (unlink(temp_path.c_str()) != 0 && errno != ENOENT) {
+      const int cleanup_error = errno;
+      warn("temporary-file cleanup", cleanup_error);
+    }
     warn(failed_operation, failure);
   }
 
