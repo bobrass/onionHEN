@@ -798,6 +798,19 @@ bool Elf::launch() noexcept {
 		LOG_ERROR("invalid ELF magic; refusing to launch");
 		return false;
 	}
+	if (e_ident[EI_CLASS] != ELFCLASS64 ||
+		e_ident[EI_DATA] != ELFDATA2LSB ||
+		e_ident[EI_VERSION] != EV_CURRENT || e_version != EV_CURRENT ||
+		e_machine != EM_X86_64) {
+		LOG_ERROR(
+			"unsupported ELF format class=%u data=%u ident_version=%u "
+			"machine=%u version=%u",
+			static_cast<unsigned int>(e_ident[EI_CLASS]),
+			static_cast<unsigned int>(e_ident[EI_DATA]),
+			static_cast<unsigned int>(e_ident[EI_VERSION]),
+			static_cast<unsigned int>(e_machine), e_version);
+		return false;
+	}
 	LOG_DEBUG("processing program headers");
 	log_to_file( "processing program headers\n");
 
