@@ -8,6 +8,7 @@
 #include <onion/system_tmp.h>
 
 #include <cerrno>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -35,17 +36,26 @@ class DaemonRuntime final : public plugin::ProcessRuntime {
 public:
   pid_t recover(std::string_view plugin_id) override {
     const std::string path = pid_path(plugin_id);
+    if (path.empty()) return -1;
     const int descriptor = open(path.c_str(), O_RDONLY);
     if (descriptor < 0) return -1;
     char value[32]{};
     const ssize_t count = read(descriptor, value, sizeof(value) - 1);
     close(descriptor);
-    if (count <= 0) return -1;
+    if (count <= 0 || static_cast<size_t>(count) >= sizeof(value) - 1)
+      return -1;
+    size_t digits = static_cast<size_t>(count);
+    if (digits < 2 || value[digits - 1] != '\n') return -1;
+    value[--digits] = '\0';
+    if (digits == 0) return -1;
+    for (size_t i = 0; i < digits; ++i)
+      if (value[i] < '0' || value[i] > '9') return -1;
+
     char *end = nullptr;
     errno = 0;
     const long parsed = std::strtol(value, &end, 10);
-    return errno == 0 && end != value && (*end == '\0' || *end == '\n') &&
-                   parsed > 1
+    return errno == 0 && end != value && *end == '\0' && parsed > 1 &&
+                   parsed <= INT_MAX
                ? static_cast<pid_t>(parsed)
                : -1;
   }
