@@ -18,6 +18,15 @@ body:
       required: true
 
   - type: input
+    id: last_working_version
+    attributes:
+      label: Last OnionHEN version known to work (if any)
+      description: For regressions, include the release or build where the same setup still worked.
+      placeholder: "v0.0.11; leave blank if unknown"
+    validations:
+      required: false
+
+  - type: input
     id: firmware
     attributes:
       label: Firmware
