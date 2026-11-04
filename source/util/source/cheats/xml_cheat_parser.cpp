@@ -2,6 +2,7 @@
 #include "cheats/i_cheat_parser.hpp"
 
 #include <cerrno>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -35,7 +36,8 @@ const char *findXmlTagValue(const char *start, const char *tag, char *out,
 
   size_t len = static_cast<size_t>(close - open);
   if (len >= out_size) {
-    len = out_size - 1;
+    out[0] = '\0';
+    return close + std::strlen(close_tag);
   }
   std::memcpy(out, open, len);
   out[len] = '\0';
@@ -93,6 +95,32 @@ bool parse_section_index(const char *text, int &out) {
       value >= MODULE_INFO_MAX_SECTIONS)
     return false;
   out = static_cast<int>(value);
+  return true;
+}
+
+bool parse_hex_offset(const char *text, std::uint64_t &out) {
+  if (!text || !text[0])
+    return false;
+  const char *digits = text;
+  if (digits[0] == '0' && (digits[1] == 'x' || digits[1] == 'X'))
+    digits += 2;
+  if (!digits[0])
+    return false;
+  for (const unsigned char *cursor =
+           reinterpret_cast<const unsigned char *>(digits);
+       *cursor; ++cursor) {
+    if (!((*cursor >= '0' && *cursor <= '9') ||
+          (*cursor >= 'a' && *cursor <= 'f') ||
+          (*cursor >= 'A' && *cursor <= 'F')))
+      return false;
+  }
+
+  errno = 0;
+  char *end = nullptr;
+  const unsigned long long value = std::strtoull(digits, &end, 16);
+  if (errno != 0 || end == digits || *end != '\0')
+    return false;
+  out = static_cast<std::uint64_t>(value);
   return true;
 }
 
@@ -201,6 +229,14 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
         continue;
       }
 
+      std::uint64_t parsed_offset = 0;
+      if (!parse_hex_offset(offset, parsed_offset)) {
+        LOG_WARN("[engine] parse_xml invalid patch offset cheat=%s",
+                 entry->name);
+        line_cursor = line_end + 12;
+        continue;
+      }
+
       if (onion_cheat_entry_ensure_patch(entry) != 0) {
         LOG_ERROR("[engine] parse_xml ensure_patch failed");
         line_cursor = line_end + 12;
@@ -208,7 +244,7 @@ int parseXmlMutating(char *xml, onion_cheat_file_t &out) {
       }
       patch = &entry->patches[entry->patch_count];
       std::memset(patch, 0, sizeof(*patch));
-      patch->offset = std::strtoull(offset, nullptr, 16);
+      patch->offset = parsed_offset;
       if (section[0] != '\0') {
         int section_num = 0;
         if (parse_section_index(section, section_num)) {
