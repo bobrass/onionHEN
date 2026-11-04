@@ -2,6 +2,7 @@
 #include "cheats/cheat_engine_internal.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -38,11 +39,19 @@ static const char SHNEXT_PROCESS_KEY[] = "#my*S3cr3t";
 
 static int shnext_deflate_decompress(const uint8_t *data, size_t data_len,
                                      uint8_t **out, size_t *out_len) {
-  size_t buf_len = data_len * 10 + 1024;
+  size_t buf_len;
   uint8_t *buf = NULL;
 
+  if (out == NULL || out_len == NULL) {
+    return -1;
+  }
   *out = NULL;
   *out_len = 0;
+  if (data == NULL || data_len == 0 ||
+      data_len > (SIZE_MAX - 1024) / 10) {
+    return -1;
+  }
+  buf_len = data_len * 10 + 1024;
 
   buf = (uint8_t *)malloc(buf_len);
   if (buf == NULL) {
@@ -60,6 +69,9 @@ static int shnext_deflate_decompress(const uint8_t *data, size_t data_len,
     }
     onion_cheat_secure_zero(buf, buf_len);
     free(buf);
+    if (attempt == 3 || buf_len > SIZE_MAX / 2) {
+      return -1;
+    }
     buf_len *= 2;
     buf = (uint8_t *)malloc(buf_len);
     if (buf == NULL) {
