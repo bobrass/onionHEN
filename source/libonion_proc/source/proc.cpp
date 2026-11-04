@@ -119,36 +119,61 @@ module_info_t* get_module_info(pid_t pid, const char* module_name)
 {
     size_t num_handles = 0;
     syscall(SYS_dl_get_list, pid, NULL, 0, &num_handles);
-    
-    if (num_handles)
+    if (num_handles == 0)
     {
-        uintptr_t* handles = (uintptr_t*) calloc(num_handles, sizeof(uintptr_t));
-        syscall(SYS_dl_get_list, pid, handles, num_handles, &num_handles);
-
-        module_info_t* mod_info = (module_info_t*) malloc(sizeof(module_info_t));
-        
-        for (size_t i = 0; i < num_handles; ++i)
-        {
-            bzero(mod_info, sizeof(module_info_t));
-            syscall(SYS_dl_get_info_2, pid, 1, handles[i], mod_info);
-            if (!strcmp(mod_info->filename, module_name))
-            {
-                return mod_info;
-            }
-        }
-        
-        free(handles);
-        free(mod_info);
+        return NULL;
     }
 
+    const size_t handle_capacity = num_handles;
+    uintptr_t* handles = (uintptr_t*) calloc(handle_capacity, sizeof(uintptr_t));
+    if (handles == NULL)
+    {
+        return NULL;
+    }
+    syscall(SYS_dl_get_list, pid, handles, handle_capacity, &num_handles);
+    if (num_handles > handle_capacity)
+    {
+        free(handles);
+        return NULL;
+    }
+
+    module_info_t* mod_info = (module_info_t*) malloc(sizeof(module_info_t));
+    if (mod_info == NULL)
+    {
+        free(handles);
+        return NULL;
+    }
+
+    for (size_t i = 0; i < num_handles; ++i)
+    {
+        bzero(mod_info, sizeof(module_info_t));
+        syscall(SYS_dl_get_info_2, pid, 1, handles[i], mod_info);
+        if (!strcmp(mod_info->filename, module_name))
+        {
+            free(handles);
+            return mod_info;
+        }
+    }
+
+    free(handles);
+    free(mod_info);
     return NULL;
 }
+
+
 
 
 int get_module_handle(pid_t pid, const char* module_name)
 {
     module_info_t* mod_info = get_module_info(pid, module_name);
-    return mod_info ? mod_info->handle : 0; 
+    if (mod_info == NULL)
+    {
+        return 0;
+    }
+
+    const int handle = static_cast<int>(mod_info->handle);
+    free(mod_info);
+    return handle;
 }
 
 

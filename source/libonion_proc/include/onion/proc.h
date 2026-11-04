@@ -84,6 +84,7 @@ typedef struct {
 struct proc* find_proc_by_name(const char* process_name);
 struct proc* get_proc_by_pid(pid_t pid);
 struct proc* get_proc_by_title_id(const char* title_id);
+/* Returned module info is heap-allocated; the caller must free it. */
 module_info_t* get_module_info(pid_t pid, const char* module_name);
 int get_module_handle(pid_t pid, const char* module_name);
 void list_all_proc_and_pid();
