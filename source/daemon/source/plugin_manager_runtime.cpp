@@ -88,12 +88,30 @@ public:
     }
     mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
     mkdir(ONION_SYSTEM_TMP_PID_ROOT, 0777);
-    const int descriptor = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    std::string temp_path = path + ".tmp.XXXXXX";
+    const int descriptor = ::mkstemp(temp_path.data());
     if (descriptor < 0) return;
+    mode_t mode = 0644;
+    struct stat existing {};
+    if (stat(path.c_str(), &existing) == 0) mode = existing.st_mode & 0777;
+    bool ok = fchmod(descriptor, mode) == 0;
     char value[32]{};
     const int length = std::snprintf(value, sizeof(value), "%d\n", pid);
-    if (length > 0) (void)write(descriptor, value, static_cast<size_t>(length));
-    close(descriptor);
+    if (length <= 0 || static_cast<size_t>(length) >= sizeof(value)) ok = false;
+    size_t written = 0;
+    while (ok && written < static_cast<size_t>(length)) {
+      const ssize_t count = write(descriptor, value + written,
+                                  static_cast<size_t>(length) - written);
+      if (count < 0 && errno == EINTR) continue;
+      if (count <= 0) {
+        ok = false;
+        break;
+      }
+      written += static_cast<size_t>(count);
+    }
+    if (close(descriptor) != 0) ok = false;
+    if (ok && std::rename(temp_path.c_str(), path.c_str()) == 0) return;
+    unlink(temp_path.c_str());
   }
 
   void stop(pid_t pid, uint32_t flags) override {
