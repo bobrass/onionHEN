@@ -149,7 +149,7 @@ void install_crash_handlers() {
     sigaction(i, &action, nullptr);
 }
 
-void start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
+bool start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
   if (app_jailbreak_runtime_start(app_jailbreak_thr)) {
     pthread_t lifecycle_thr = nullptr;
     if (pthread_create(&lifecycle_thr, nullptr, app_lifecycle_listener_thread,
@@ -163,7 +163,12 @@ void start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
     LOG_ERROR("[lifecycle] Big App listener disabled: AppJailbreak runtime is "
               "not ready");
   }
-  pthread_create(msg_thr, nullptr, IPC_loop, nullptr);
+  const int ipc_start_result =
+      pthread_create(msg_thr, nullptr, IPC_loop, nullptr);
+  if (ipc_start_result != 0) {
+    LOG_ERROR("[ipc] server thread creation failed rc=%d", ipc_start_result);
+    return false;
+  }
   if (!onion::daemon::plugin_ipc::start())
     LOG_ERROR("plugin IPC server failed to start");
   pthread_t ctrl_thr = nullptr;
@@ -187,6 +192,7 @@ void start_worker_threads(pthread_t* app_jailbreak_thr, pthread_t* msg_thr) {
   pthread_t resume_thr = nullptr;
   pthread_create(&resume_thr, nullptr, resume_recovery_thread, nullptr);
   pthread_detach(resume_thr);
+  return true;
 }
 
 /** Keep IPC_loop alive: rejoin + restart on exit. */
@@ -310,7 +316,10 @@ int main() {
   // Big App lifecycle events then use reconcile() against this initialized
   // catalog, rather than racing a second initial start().
   onion::daemon::sprx_plugins::start();
-  start_worker_threads(&app_jailbreak_thr, &msg_thr);
+  if (!start_worker_threads(&app_jailbreak_thr, &msg_thr)) {
+    onion_ready_clear(ONION_READY_DAEMON);
+    return 1;
+  }
   for (int attempt = 0;
        attempt < 20 && !onion::daemon::plugin_ipc::is_listening(); ++attempt)
     usleep(50 * 1000);
@@ -318,7 +327,11 @@ int main() {
     onion::daemon::plugins::start();
   else
     LOG_ERROR("[plugins] startup skipped because plugin IPC is not listening");
-  onion_ready_signal_pid(ONION_READY_DAEMON, getpid());
+  if (!onion_ready_signal_pid(ONION_READY_DAEMON, getpid())) {
+    LOG_ERROR("failed to publish daemon readiness pid=%d", (int)getpid());
+    onion_ready_clear(ONION_READY_DAEMON);
+    return 1;
+  }
 
   LOG_DEBUG("is toolbox only: %s | ver: %x", toolbox_only ? "Yes" : "No",
             sys_ver.version);
