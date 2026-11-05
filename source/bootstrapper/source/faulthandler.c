@@ -70,7 +70,5 @@ void fault_handler_init(void (*cleanup_handler)(void)) {
 	}
 	g_cleanup_handler = cleanup_handler;
 	signal(SIGSEGV, fault_handler);
-	//signal(10, fault_handler);
-	signal(9, fault_handler);
 	signal(SIGILL, fault_handler);
 }
